@@ -44,8 +44,12 @@ jobs:
             os: windows-latest
             args: ''
             rust-targets: ''
-          - name: Linux
+          - name: Linux x64
             os: ubuntu-22.04
+            args: ''
+            rust-targets: ''
+          - name: Linux ARM
+            os: ubuntu-22.04-arm
             args: ''
             rust-targets: ''
     runs-on: ${{ matrix.os }}
@@ -89,7 +93,7 @@ jobs:
       - name: Keep the installers from this build
         uses: actions/upload-artifact@v4
         with:
-          name: partio-${{ runner.os }}
+          name: partio-${{ runner.os }}-${{ runner.arch }}
           path: |
             src-tauri/target/release/bundle/
             src-tauri/target/universal-apple-darwin/release/bundle/
