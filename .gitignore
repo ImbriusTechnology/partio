@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+src-tauri/target/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Library data never belongs in the repo: databases, backups, test data built from real libraries
+*.db
+*.db-wal
+*.db-shm
+backups/
+private/
+*.local
