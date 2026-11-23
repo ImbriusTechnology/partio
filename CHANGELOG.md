@@ -5,6 +5,8 @@ All notable changes to Partio Inventory are recorded here. Dates are in YYYY-MM-
 ## Unreleased
 
 ### Added
+- Locations screen: a tree of storage locations with L-codes; add, rename, move inside another location, remove (archived if ever used) and restore; see what's held where, and move several parts at once.
+- Stock on the part page: receive (with vendor, vendor part number, price and order number), move, count and remove, all recorded in the stock ledger. Receiving with a new vendor part number adds it to the part.
 - Parts screen: category tree, searchable parts list (PN, name, description, MPN, SKU, value, package, category), inline name editing, and bulk archive, obsolete, recategorise and delete.
 - Part editor: one form for a part with its manufacturer parts, vendor parts and price breaks; next 5-digit PN by default; suggested names for resistors, capacitors and semiconductors.
 - Part page: details, stock, sources with a default vendor (★), where used, and history.

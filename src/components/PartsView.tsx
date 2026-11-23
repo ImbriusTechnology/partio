@@ -9,8 +9,9 @@ import { IconChevron, IconPlus } from './icons.tsx';
 import { PartDetail } from './PartDetail.tsx';
 import { ConfirmButton, Field, Modal, SearchInput, Select, fmtQty, useAction, useLoad, useToast } from './ui.tsx';
 
-export function PartsView({ selectedId, onSelect, onNewPart, refreshKey, onChanged }: {
-  selectedId: number | null; onSelect: (id: number | null) => void; onNewPart: () => void; refreshKey: number; onChanged: () => void;
+export function PartsView({ selectedId, onSelect, onNewPart, onOpenLocation, refreshKey, onChanged }: {
+  selectedId: number | null; onSelect: (id: number | null) => void; onNewPart: () => void; onOpenLocation: (id: number) => void;
+  refreshKey: number; onChanged: () => void;
 }) {
   const [text, setText] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -167,7 +168,7 @@ export function PartsView({ selectedId, onSelect, onNewPart, refreshKey, onChang
       </section>
       <section className="detail-pane">
         {selectedId
-          ? <PartDetail id={selectedId} refreshKey={refreshKey} onChanged={onChanged} onOpenPart={onSelect} onDeleted={() => onSelect(null)} />
+          ? <PartDetail id={selectedId} refreshKey={refreshKey} onChanged={onChanged} onOpenPart={onSelect} onOpenLocation={onOpenLocation} onDeleted={() => onSelect(null)} />
           : <p className="empty">Select a part, or press {shortcutLabel('K')} to find one.</p>}
       </section>
       {archived && (

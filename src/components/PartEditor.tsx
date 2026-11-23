@@ -135,7 +135,7 @@ export function PartEditor({ part, template, initialText, onClose, onSaved }: {
         <Field label="Package">
           <Select value={f.package_id} onChange={(v) => set('package_id', v)} empty="—" options={pkgs.map((p) => ({ value: p.id, label: packageLabel(p) }))} />
         </Field>
-        <Field label="Usual location" hint={locs.length ? undefined : 'Locations arrive in the next step'}>
+        <Field label="Usual location" hint={locs.length ? undefined : 'Add locations on the Locations screen'}>
           <LocationPicker value={f.default_location_id} onChange={(v) => set('default_location_id', v)} locations={locs} allowEmpty emptyLabel="None" />
         </Field>
         <Field label="Kind"><Select value={f.kind} onChange={(v) => set('kind', v ?? 'component')} options={KIND_OPTIONS} /></Field>

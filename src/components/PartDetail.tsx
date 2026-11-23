@@ -5,16 +5,21 @@ import {
   KIND_LABEL, STATUS_LABEL, deleteBlocker, deletePart, getPart, mergeParts, resolveCode, setPartsStatus, setPreferredVendorPart,
   type PartDetail as Part,
 } from '../lib/parts.ts';
-import { getSetting } from '../lib/reference.ts';
+import { listLocations } from '../lib/locations.ts';
+import { getSetting, listVendors } from '../lib/reference.ts';
+import { countStock, locationNotes, moveStock, receiveLocationFor, receiveStock, removeStock } from '../lib/stock.ts';
 import { formatValue } from '../lib/values.ts';
 import { IconCopy } from './icons.tsx';
 import { PartEditor } from './PartEditor.tsx';
-import { ConfirmButton, Modal, copyText, fmtMoney, fmtQty, useAction, useLoad, useToast } from './ui.tsx';
+import { LocationPicker } from './LocationPicker.tsx';
+import { Combo, ConfirmButton, Field, Modal, Select, copyText, fmtMoney, fmtQty, num, useAction, useLoad, useToast } from './ui.tsx';
 
-type Dialog = { kind: 'edit' } | { kind: 'similar' } | { kind: 'merge' };
+type StockMode = 'receive' | 'move' | 'count' | 'remove';
+type Dialog = { kind: 'edit' } | { kind: 'similar' } | { kind: 'merge' } | { kind: 'stock'; mode: StockMode; locationId?: number };
 
-export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onDeleted }: {
-  id: number; refreshKey: number; onChanged: () => void; onOpenPart: (id: number) => void; onDeleted?: () => void;
+export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocation, onDeleted }: {
+  id: number; refreshKey: number; onChanged: () => void; onOpenPart: (id: number) => void;
+  onOpenLocation?: (id: number) => void; onDeleted?: () => void;
 }) {
   const { data: p, error, reload } = useLoad(() => getPart(id), [id, refreshKey]);
   const blocker = useLoad(() => deleteBlocker(id), [id, refreshKey]);
@@ -70,19 +75,36 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onDeleted }:
         <div><dt>Value</dt><dd>{value || '—'}{p.value_text && value !== p.value_text ? <span className="muted"> ({p.value_text})</span> : null}</dd></div>
         <div><dt>Tolerance</dt><dd>{p.tolerance_pct !== null ? `${p.tolerance_pct}%` : '—'}</dd></div>
         <div><dt>Package</dt><dd>{p.package ?? '—'}</dd></div>
-        <div><dt>Usual location</dt><dd>{p.location ?? '—'}</dd></div>
+        <div><dt>Usual location</dt><dd>{p.location && p.location_id
+          ? <button className="link" onClick={() => onOpenLocation?.(p.location_id!)}>{p.location}</button> : '—'}</dd></div>
         <div><dt>Buy from</dt><dd>{buyFrom ? <>{buyFrom.vendor} <span className="mono small">{buyFrom.sku}</span></> : '—'}</dd></div>
         <div><dt>Standard cost</dt><dd>{p.standard_cost !== null ? fmtMoney(p.standard_cost, base.data ?? 'USD') : '—'}</dd></div>
       </dl>
       {p.notes && <p className="notes">{p.notes}</p>}
 
       <section className="card">
-        <div className="section-head"><h3>Stock <span className="muted">{fmtQty(p.on_hand)}{p.unit !== 'each' ? ` ${p.unit}` : ''}</span></h3></div>
+        <div className="section-head">
+          <h3>Stock <span className="muted">{fmtQty(p.on_hand)}{p.unit !== 'each' ? ` ${p.unit}` : ''}</span></h3>
+          {!merged && (
+            <div className="actions">
+              <button onClick={() => setDialog({ kind: 'stock', mode: 'receive' })}>Receive</button>
+              <button onClick={() => setDialog({ kind: 'stock', mode: 'move' })} disabled={!p.stock.length}>Move</button>
+            </div>
+          )}
+        </div>
         {p.stock.length ? (
           <table className="grid compact">
             <tbody>
               {p.stock.map((s) => (
-                <tr key={s.location_id}><td>{s.path} <span className="code-chip">{s.code}</span></td><td className="num">{fmtQty(s.qty)}</td></tr>
+                <tr key={s.location_id}>
+                  <td><button className="link" onClick={() => onOpenLocation?.(s.location_id)}>{s.path}</button> <span className="code-chip">{s.code}</span></td>
+                  <td className="num">{fmtQty(s.qty)}</td>
+                  <td className="row-actions">
+                    <button className="link" onClick={() => setDialog({ kind: 'stock', mode: 'count', locationId: s.location_id })}>Count</button>
+                    <button className="link" onClick={() => setDialog({ kind: 'stock', mode: 'remove', locationId: s.location_id })}>Remove</button>
+                    <button className="link" onClick={() => setDialog({ kind: 'stock', mode: 'move', locationId: s.location_id })}>Move</button>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -188,7 +210,104 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onDeleted }:
         <PartEditor template={p} onClose={() => setDialog(null)} onSaved={(newId) => { setDialog(null); onChanged(); onOpenPart(newId); }} />
       )}
       {dialog?.kind === 'merge' && <MergeDialog part={p} onClose={() => setDialog(null)} onDone={changed} />}
+      {dialog?.kind === 'stock' && (
+        <StockDialog part={p} mode={dialog.mode} locationId={dialog.locationId} currency={base.data ?? 'USD'} onClose={() => setDialog(null)} onDone={changed} />
+      )}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ stock
+
+function StockDialog({ part, mode, locationId, currency, onClose, onDone }: {
+  part: Part; mode: StockMode; locationId?: number; currency: string; onClose: () => void; onDone: () => void;
+}) {
+  const act = useAction();
+  const toast = useToast();
+  const locs = useLoad(() => listLocations(), []);
+  const vendors = useLoad(() => listVendors(), []);
+  const [from, setFrom] = useState<number | null>(locationId ?? part.stock[0]?.location_id ?? null);
+  const [to, setTo] = useState<number | null>(mode === 'receive' ? locationId ?? receiveLocationFor(part) : null);
+  const [qty, setQty] = useState(mode === 'count' ? String(part.stock.find((s) => s.location_id === locationId)?.qty ?? '') : '');
+  const [mfrPartId, setMfrPartId] = useState<number | null>(part.mfrParts.find((m) => m.preferred)?.id ?? null);
+  const knownVps = part.mfrParts.flatMap((m) => m.vendorParts.map((v) => ({ ...v, mfr_part_id: m.id })));
+  const firstVp = defaultVendorPart(part);
+  const [vendorId, setVendorId] = useState<number | null>(mode === 'receive' ? firstVp?.vendor_id ?? null : null);
+  const [sku, setSku] = useState(mode === 'receive' ? firstVp?.sku ?? '' : '');
+  const [cost, setCost] = useState('');
+  const [orderRef, setOrderRef] = useState('');
+  const [note, setNote] = useState('');
+  const stockOptions = part.stock.map((s) => ({ value: s.location_id, label: `${s.path} (${fmtQty(s.qty)})` }));
+  const notes = locationNotes(part);
+  const skusFor = knownVps.filter((v) => v.vendor_id === vendorId);
+  const chooseVendor = (id: number | null) => {
+    setVendorId(id);
+    const known = knownVps.filter((v) => v.vendor_id === id);
+    setSku(known.find((v) => v.mfr_part_id === mfrPartId)?.sku ?? known[0]?.sku ?? '');
+  };
+  const title = { receive: 'Receive stock', move: 'Move stock', count: 'Count stock', remove: 'Remove stock' }[mode];
+  const noLocations = locs.data?.length === 0;
+
+  const submit = () => act(async () => {
+    const n = num(qty);
+    if (n === null) throw new Error('Enter a quantity');
+    if (mode === 'receive') {
+      if (!to) throw new Error('Choose a location');
+      const r = await receiveStock(part.id, to, n, { mfrPartId, vendorId, sku: sku || null, unitCost: num(cost), orderRef: orderRef || null, note: note || null });
+      if (r.addedVendorPart) toast(`${sku} added to this part’s sources`);
+    } else if (mode === 'move') {
+      if (!from || !to) throw new Error('Choose both locations');
+      await moveStock(part.id, from, to, n, note || null);
+    } else if (mode === 'count') {
+      if (!from) throw new Error('Choose a location');
+      await countStock(part.id, from, n, note || null);
+    } else {
+      if (!from) throw new Error('Choose a location');
+      await removeStock(part.id, from, Math.abs(n), note || null);
+    }
+    onDone();
+  }, 'Stock updated');
+
+  return (
+    <Modal title={`${title} · ${part.pn}`} onClose={onClose}
+      footer={<><span className="spacer" /><button onClick={onClose}>Cancel</button>
+        <button className="primary" disabled={noLocations} onClick={() => void submit()}>{title.split(' ')[0]}</button></>}>
+      {noLocations && <p className="small">There are no locations yet. Add some on the Locations screen first.</p>}
+      <div className="form-grid">
+        {mode !== 'receive' && (
+          <Field label={mode === 'move' ? 'From' : 'Location'}>
+            {stockOptions.length
+              ? <Select value={from} onChange={setFrom} options={stockOptions} />
+              : <LocationPicker value={from} onChange={setFrom} locations={locs.data ?? []} notes={notes} />}
+          </Field>
+        )}
+        {(mode === 'receive' || mode === 'move') && (
+          <Field label={mode === 'move' ? 'To' : 'Into'}><LocationPicker value={to} onChange={setTo} locations={locs.data ?? []} notes={notes} /></Field>
+        )}
+        <Field label={mode === 'count' ? 'Counted quantity' : 'Quantity'}>
+          <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }} />
+        </Field>
+        {mode === 'receive' && (
+          <>
+            <Field label="Manufacturer part" wide>
+              <Select value={mfrPartId} onChange={setMfrPartId} empty="Not recorded"
+                options={part.mfrParts.map((m) => ({ value: m.id, label: `${m.manufacturer} ${m.mpn ?? ''}` }))} />
+            </Field>
+            <Field label="Bought from" hint="Vendors are added in Settings">
+              <Select value={vendorId} onChange={chooseVendor} empty="Not recorded" options={(vendors.data ?? []).map((v) => ({ value: v.id, label: v.name }))} />
+            </Field>
+            <Field label="Vendor part number" hint={sku && vendorId && !skusFor.some((v) => v.sku.toLowerCase() === sku.trim().toLowerCase())
+              ? 'New for this part: it will be added to its sources' : 'Optional'}>
+              <Combo value={sku} onChange={setSku} options={skusFor.map((v) => v.sku)} placeholder={vendorId ? '' : 'Choose a vendor first'} />
+            </Field>
+            <Field label={`Unit price (${currency})`} hint="Optional; in your base currency"><input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" /></Field>
+            <Field label="Order number"><input value={orderRef} onChange={(e) => setOrderRef(e.target.value)} /></Field>
+          </>
+        )}
+        <Field label="Note" wide><input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      </div>
+    </Modal>
   );
 }
 
