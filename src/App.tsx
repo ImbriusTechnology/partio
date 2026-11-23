@@ -1,101 +1,99 @@
-// The app shell: a sidebar with the five screens, and the screen itself.
-// Phase 1 only proves the plumbing (database, migrations, backups, shortcuts) on every platform;
-// the screens are filled in by later phases.
-import { useCallback, useEffect, useState } from 'react';
-import { backupLibrary, libraryInfo, query, type LibraryInfo } from './lib/db';
-import { isMac, modKey, shortcutLabel } from './lib/platform';
+// The app shell: navigation, quick find, new part, and the screens.
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { IconAssemblies, IconCart, IconLocations, IconParts, IconSearch, IconSettings } from './components/icons.tsx';
+import { PartEditor } from './components/PartEditor.tsx';
+import { PartsView } from './components/PartsView.tsx';
+import { QuickFind } from './components/QuickFind.tsx';
+import { SettingsView } from './components/SettingsView.tsx';
+import { ToastHost, useLoad, useToast } from './components/ui.tsx';
+import { queryOne } from './lib/db.ts';
+import { modKey, shortcutLabel } from './lib/platform.ts';
+import { ensureSearchIndex } from './lib/search.ts';
 
 type View = 'parts' | 'locations' | 'assemblies' | 'purchasing' | 'settings';
-
-const NAV: Array<{ view: View; label: string; phase: string }> = [
-  { view: 'parts', label: 'Parts', phase: 'Parts, sources, categories and search arrive in phase 2.' },
-  { view: 'locations', label: 'Locations', phase: 'Locations and stock arrive in phase 2.' },
-  { view: 'assemblies', label: 'Assemblies', phase: 'BOMs and builds arrive in phase 5.' },
-  { view: 'purchasing', label: 'Purchasing', phase: 'The shopping list and vendor lookups arrive in phase 5.' },
-  { view: 'settings', label: 'Settings', phase: '' },
+const NAV: Array<{ view: View; label: string; Icon: typeof IconParts }> = [
+  { view: 'parts', label: 'Parts', Icon: IconParts },
+  { view: 'locations', label: 'Locations', Icon: IconLocations },
+  { view: 'assemblies', label: 'Assemblies', Icon: IconAssemblies },
+  { view: 'purchasing', label: 'Purchasing', Icon: IconCart },
+  { view: 'settings', label: 'Settings', Icon: IconSettings },
 ];
 
 export default function App() {
+  return <ToastHost><Shell /></ToastHost>;
+}
+
+function Shell() {
   const [view, setView] = useState<View>('parts');
+  const [partId, setPartId] = useState<number | null>(null);
+  const [quick, setQuick] = useState(false);
+  const [newPart, setNewPart] = useState<{ text: string } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const changed = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const toast = useToast();
+  const counts = useLoad(() => queryOne<{ parts: number }>("SELECT COUNT(*) AS parts FROM part WHERE status <> 'archived'"), [refreshKey]);
+
+  const openPart = useCallback((id: number | null) => { setPartId(id); setView('parts'); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!modKey(e)) return;
-      const n = Number(e.key);
-      if (n >= 1 && n <= NAV.length) {
-        e.preventDefault();
-        setView(NAV[n - 1].view);
-      }
+      const k = e.key.toLowerCase();
+      if (k === 'k') { e.preventDefault(); setQuick(true); }
+      else if (k === 'n') { e.preventDefault(); setNewPart({ text: '' }); }
+      else if (/^[1-5]$/.test(k)) { e.preventDefault(); setView(NAV[Number(k) - 1].view); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const current = NAV.find((n) => n.view === view)!;
+  // A new version of the app may index search differently: rebuild once if so.
+  useEffect(() => {
+    ensureSearchIndex().then(changed, (e) => toast(`Search index rebuild failed: ${e?.message ?? e}`, 'error'));
+  }, [changed, toast]);
 
   return (
     <div className="app">
       <nav className="sidebar">
-        {isMac && <div className="titlebar-space" data-tauri-drag-region />}
-        <div className="brand">Partio</div>
-        {NAV.map((n, i) => (
-          <button key={n.view} className={`nav ${view === n.view ? 'sel' : ''}`} onClick={() => setView(n.view)}
-            title={`${n.label} (${shortcutLabel(String(i + 1))})`}>
-            {n.label}
-          </button>
-        ))}
+        <div className="titlebar-space" data-tauri-drag-region />
+        <button className="find" onClick={() => setQuick(true)}><IconSearch /> <span>Find a part</span> <kbd>{shortcutLabel('K')}</kbd></button>
+        <div className="nav-group">
+          {NAV.map(({ view: v, label, Icon }, i) => (
+            <button key={v} className={`nav ${view === v ? 'sel' : ''}`} onClick={() => setView(v)} title={`${label} (${shortcutLabel(String(i + 1))})`}>
+              <Icon /> <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <span className="spacer" data-tauri-drag-region />
+        <div className="sidebar-foot">{counts.data ? `${counts.data.parts.toLocaleString()} parts` : ''}</div>
       </nav>
-      <main className="pane">
-        {isMac && <div className="titlebar-space" data-tauri-drag-region />}
-        <h1>{current.label}</h1>
-        {view === 'settings' ? <SettingsView /> : <p className="muted">{current.phase}</p>}
+      <main className="content">
+        <header className="window-bar" data-tauri-drag-region>
+          <span className="window-title" data-tauri-drag-region>{NAV.find((n) => n.view === view)?.label}</span>
+        </header>
+        {/* All views stay mounted, so each keeps its place (selection, filters, scroll) when you switch away and back. */}
+        <Pane on={view === 'parts'}>
+          <PartsView selectedId={partId} onSelect={setPartId} onNewPart={() => setNewPart({ text: '' })} refreshKey={refreshKey} onChanged={changed} />
+        </Pane>
+        <Pane on={view === 'locations'}><ComingSoon what="Locations and stock" when="the next step of phase 2" /></Pane>
+        <Pane on={view === 'assemblies'}><ComingSoon what="BOMs and builds" when="phase 5" /></Pane>
+        <Pane on={view === 'purchasing'}><ComingSoon what="The shopping list and vendor lookups" when="phase 5" /></Pane>
+        <Pane on={view === 'settings'}><SettingsView refreshKey={refreshKey} onChanged={changed} /></Pane>
       </main>
+      {quick && <QuickFind onClose={() => setQuick(false)} onOpenPart={openPart} onNewPart={(text) => setNewPart({ text })} />}
+      {newPart && (
+        <PartEditor initialText={newPart.text} onClose={() => setNewPart(null)}
+          onSaved={(id) => { setNewPart(null); changed(); openPart(id); }} />
+      )}
     </div>
   );
 }
 
-interface Counts { packages: number; aliases: number; migrations: string }
+/** A view that stays laid out while hidden, so its scroll positions survive switching. */
+function Pane({ on, children }: { on: boolean; children: ReactNode }) {
+  return <div className={`view-pane ${on ? '' : 'off'}`} inert={!on}>{children}</div>;
+}
 
-function SettingsView() {
-  const [info, setInfo] = useState<LibraryInfo | null>(null);
-  const [counts, setCounts] = useState<Counts | null>(null);
-  const [message, setMessage] = useState<string>('');
-
-  const load = useCallback(async () => {
-    try {
-      setInfo(await libraryInfo());
-      const [c] = await query<Counts>(
-        `SELECT (SELECT COUNT(*) FROM package) AS packages,
-                (SELECT COUNT(*) FROM package_alias) AS aliases,
-                (SELECT group_concat(name, ', ') FROM (SELECT name FROM _migrations ORDER BY name)) AS migrations`);
-      setCounts(c);
-    } catch (e) {
-      setMessage(`Couldn't read the library: ${String(e)}`);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const backUp = async () => {
-    try {
-      setMessage(`Backed up to ${await backupLibrary()}`);
-    } catch (e) {
-      setMessage(`Backup failed: ${String(e)}`);
-    }
-  };
-
-  return (
-    <div className="settings">
-      <h2>Library</h2>
-      <dl>
-        <dt>Database</dt><dd><code>{info?.database ?? '…'}</code></dd>
-        <dt>Backups</dt><dd><code>{info?.backupDir ?? '…'}</code></dd>
-        <dt>Platform</dt><dd>{info?.platform ?? '…'}</dd>
-        <dt>Schema</dt><dd>{counts?.migrations ?? '…'}</dd>
-        <dt>Packages</dt><dd>{counts ? `${counts.packages} packages, ${counts.aliases} aliases` : '…'}</dd>
-      </dl>
-      <button onClick={() => void backUp()}>Back up now</button>
-      {message && <p className="message">{message}</p>}
-    </div>
-  );
+function ComingSoon({ what, when }: { what: string; when: string }) {
+  return <div className="coming-soon"><p className="muted">{what} arrive in {when}.</p></div>;
 }
