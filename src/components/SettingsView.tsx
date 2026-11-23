@@ -5,12 +5,14 @@ import {
   addPackage, addVendor, deletePackage, deleteVendor, getSetting, listPackages, listVendors, packageLabel, setPackageAliases,
   setSetting, updatePackage, updateVendor, type PackageRow, type Vendor,
 } from '../lib/reference.ts';
+import { ImportExportSection } from './ImportExport.tsx';
 import { ConfirmButton, Field, Modal, SearchInput, Select, useAction, useLoad } from './ui.tsx';
 
 export function SettingsView({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   return (
     <div className="settings-view">
       <LibrarySection refreshKey={refreshKey} />
+      <ImportExportSection onChanged={onChanged} />
       <VendorsSection refreshKey={refreshKey} onChanged={onChanged} />
       <PackagesSection refreshKey={refreshKey} onChanged={onChanged} />
     </div>

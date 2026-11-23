@@ -52,6 +52,38 @@ export async function transaction(statements: Statement[]): Promise<unknown[]> {
 
 export const ref = (n: number) => ({ $ref: n });
 
+/**
+ * Run `fn` as one transaction: everything it changes is kept if it finishes, and undone if it throws
+ * (or if `keep` is false, which is how an import's preview runs the import and then takes it back).
+ * Inner transaction() calls become savepoints inside it.
+ */
+export async function withTransaction<T>(fn: () => Promise<T>, keep = true): Promise<T> {
+  await execute('BEGIN');
+  let result: T;
+  try {
+    result = await fn();
+  } catch (e) {
+    await execute('ROLLBACK');
+    throw e;
+  }
+  await execute(keep ? 'COMMIT' : 'ROLLBACK');
+  return result;
+}
+
+/** Undo a row's work inside a transaction if it fails, without undoing the rest. */
+export async function savepoint<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  await execute(`SAVEPOINT ${name}`);
+  try {
+    const r = await fn();
+    await execute(`RELEASE ${name}`);
+    return r;
+  } catch (e) {
+    await execute(`ROLLBACK TO ${name}`);
+    await execute(`RELEASE ${name}`);
+    throw e;
+  }
+}
+
 /** A fresh id for grouping stock transactions that belong to one action. */
 export const batchId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -62,6 +94,21 @@ export interface LibraryInfo { dir: string; database: string; files: string; bac
 export async function libraryInfo(): Promise<LibraryInfo> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<LibraryInfo>('library_info');
+}
+
+/**
+ * Ask for a folder and write these files into a new folder inside it named `subfolder`.
+ * Resolves to the folder written to, or null if the person cancelled.
+ */
+export async function saveFilesToFolder(title: string, subfolder: string, files: Array<{ name: string; text: string }>): Promise<string | null> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string | null>('save_files_to_folder', { title, subfolder, files });
+}
+
+/** Show a file or folder in the system's file manager (Finder, Explorer, Files). */
+export async function revealInFileManager(path: string): Promise<void> {
+  const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+  await revealItemInDir(path);
 }
 
 /** Back up now; resolves to the backup's path. */

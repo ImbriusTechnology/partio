@@ -18,7 +18,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Only syntax Node can strip, so the tests run the same source the app does */
+    "erasableSyntaxOnly": true
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]

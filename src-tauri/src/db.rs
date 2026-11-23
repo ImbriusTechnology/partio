@@ -201,10 +201,12 @@ pub struct Statement {
 
 /// Run several statements in one transaction: all succeed or none do.
 /// A parameter written as {"$ref": n} is replaced by the row id inserted by statement n.
+/// Uses a savepoint, so it also works inside a longer transaction the TypeScript side has begun
+/// (an import runs as one transaction made of many of these).
 #[tauri::command]
 pub async fn db_transaction(lib: State<'_, Library>, statements: Vec<Statement>) -> Result<Vec<Value>, String> {
     let mut conn = lib.conn.lock().map_err(err)?;
-    let tx = conn.transaction().map_err(err)?;
+    let tx = conn.savepoint().map_err(err)?;
     let mut ids: Vec<i64> = Vec::new();
     let mut out: Vec<Value> = Vec::new();
     for (n, s) in statements.iter().enumerate() {

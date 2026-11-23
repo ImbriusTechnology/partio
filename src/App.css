@@ -460,3 +460,13 @@ html:not(.platform-mac) .sidebar { padding-top: 10px; }
 .path-list { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 6px 12px; margin: 0 0 10px; align-items: baseline; }
 .path-list dt { color: var(--muted); font-size: 12px; }
 .path-list dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.import-files { margin: 10px 0; }
+.import-report { margin-top: 12px; }
+.import-report h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.ok-note { background: var(--ok-soft); color: var(--ok); border-radius: var(--radius); padding: 8px 10px; margin: 0 0 8px; }
+.error-note { background: var(--danger-soft); color: var(--danger); border-radius: var(--radius); padding: 8px 10px; margin: 0 0 8px; }
+.warn-text { color: var(--warn); }
+.file-results, .also-created { margin: 0; padding-left: 18px; }
+.file-results li { margin: 3px 0; }
+.file-results li.bad { color: var(--danger); }
+.error-list { max-height: 260px; overflow: auto; border: 0.5px solid var(--line); border-radius: var(--radius); }

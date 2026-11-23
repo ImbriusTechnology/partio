@@ -5,6 +5,9 @@ All notable changes to Partio Inventory are recorded here. Dates are in YYYY-MM-
 ## Unreleased
 
 ### Added
+- CSV import and export (format version 1, see docs/csv-format.md): locations, parts, stock and sources.
+  Check shows exactly what an import will do, file by file and line by line, without changing anything;
+  the import itself is all or nothing, with a backup first. Templates and a full library export are in Settings.
 - Barcode scanning: scan a part label (PN, MPN or vendor part number) or a location label (L-code) with a USB or Bluetooth scanner to open it.
 - Locations screen: a tree of storage locations with L-codes; add, rename, move inside another location, remove (archived if ever used) and restore; see what's held where, and move several parts at once.
 - Stock on the part page: receive (with vendor, vendor part number, price and order number), move, count and remove, all recorded in the stock ledger. Receiving with a new vendor part number adds it to the part.

@@ -22,6 +22,8 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
+# Native folder and file choosers on macOS, Windows and Linux
+rfd = "0.15"
 # API keys live in the system's secure storage: Keychain (macOS), Credential Manager (Windows),
 # Secret Service (Linux). Without these features keyring silently uses an in-memory mock store.
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }

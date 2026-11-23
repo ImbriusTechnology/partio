@@ -260,6 +260,8 @@ async function valueColumns(valueText: string | null, categoryId: number | null)
 export async function savePart(input: {
   partId: number | null; seriesId?: number | null; manualPn?: string | null; fields: PartFields; sources: SourceDraft[];
   initialStock?: { qty: number; locationId: number; unitCost: number | null } | null; source?: string | null;
+  /** false: leave the search index alone (an import rebuilds it once at the end). */
+  reindex?: boolean;
 }): Promise<number> {
   const { partId, fields: f } = input;
   if (!f.description.trim()) throw new Error('A description is needed');
@@ -381,7 +383,7 @@ export async function savePart(input: {
     throw e;
   }
   const id = partId ?? res[0].lastInsertId;
-  await reindexPart(id);
+  if (input.reindex !== false) await reindexPart(id);
   return id;
 }
 

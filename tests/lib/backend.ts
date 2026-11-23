@@ -30,7 +30,7 @@ export function nodeBackend(db: DatabaseSync): Backend {
     async transaction(statements: Statement[]) {
       const ids: number[] = [];
       const out: unknown[] = [];
-      db.exec('BEGIN');
+      db.exec('SAVEPOINT tx');     // like the Rust side: works inside a longer transaction too
       try {
         statements.forEach((s, n) => {
           const params = (s.params ?? []).map((p) => bind(p, ids, n));
@@ -47,9 +47,10 @@ export function nodeBackend(db: DatabaseSync): Backend {
             throw new Error(`statement ${n}: ${(e as Error).message}`);
           }
         });
-        db.exec('COMMIT');
+        db.exec('RELEASE tx');
       } catch (e) {
-        db.exec('ROLLBACK');
+        db.exec('ROLLBACK TO tx');
+        db.exec('RELEASE tx');
         throw e;
       }
       return out;

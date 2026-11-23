@@ -52,7 +52,7 @@ npm run tauri build           # build an installer for this platform
 1. **Project setup:** repo, schema, app shell, CI builds for all three platforms *(in progress)*
 2. **Core inventory:** parts, manufacturer and vendor parts, categories, locations, stock, search, merging duplicates
 3. **First run and demo library**
-4. **CSV import and export** for locations, parts, stock and sources, with downloadable templates
+4. **CSV import and export** for locations, parts, stock and sources, with downloadable templates *(done early: see [the format](docs/csv-format.md))*
 5. **Assemblies and purchasing:** BOMs (with `bom.csv` import), builds, shopping list, vendor lookups
 6. **Labels on every platform:** QR labels for parts and locations
 7. **Release 1.0**
