@@ -5,6 +5,7 @@ All notable changes to Partio Inventory are recorded here. Dates are in YYYY-MM-
 ## Unreleased
 
 ### Added
+- Barcode scanning: scan a part label (PN, MPN or vendor part number) or a location label (L-code) with a USB or Bluetooth scanner to open it.
 - Locations screen: a tree of storage locations with L-codes; add, rename, move inside another location, remove (archived if ever used) and restore; see what's held where, and move several parts at once.
 - Stock on the part page: receive (with vendor, vendor part number, price and order number), move, count and remove, all recorded in the stock ledger. Receiving with a new vendor part number adds it to the part.
 - Parts screen: category tree, searchable parts list (PN, name, description, MPN, SKU, value, package, category), inline name editing, and bulk archive, obsolete, recategorise and delete.

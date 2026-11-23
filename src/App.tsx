@@ -8,7 +8,10 @@ import { QuickFind } from './components/QuickFind.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
 import { ToastHost, useLoad, useToast } from './components/ui.tsx';
 import { queryOne } from './lib/db.ts';
+import { findLocation } from './lib/locations.ts';
+import { resolveCode } from './lib/parts.ts';
 import { modKey, shortcutLabel } from './lib/platform.ts';
+import { listenForScans, scanTarget } from './lib/scanner.ts';
 import { ensureSearchIndex } from './lib/search.ts';
 
 type View = 'parts' | 'locations' | 'assemblies' | 'purchasing' | 'settings';
@@ -49,6 +52,25 @@ function Shell() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // A scanned label opens what it names: a part label holds the PN, a location label its code (L0042).
+  useEffect(() => listenForScans({
+    onScan: (code) => void (async () => {
+      if (document.querySelector('.modal-backdrop')) return;   // a dialog is open: leave it alone
+      const t = scanTarget(code);
+      if (t.kind === 'location') {
+        const loc = await findLocation(t.code);
+        if (loc && !loc.archived) { openLocation(loc.id); return; }
+        toast(`Scanned ${t.code}: no location with that code`, 'error');
+        return;
+      }
+      for (const c of t.codes) {
+        const hit = await resolveCode(c);
+        if (hit) { openPart(hit.id); toast(`Scanned ${hit.pn}`); return; }
+      }
+      toast(`Scanned “${code}”: no part or location with that code`, 'error');
+    })().catch((e) => toast(String(e?.message ?? e), 'error')),
+  }), [openPart, openLocation, toast]);
 
   // A new version of the app may index search differently: rebuild once if so.
   useEffect(() => {
