@@ -161,6 +161,13 @@ test('sources: new manufacturer and vendor parts with price breaks; clashes are 
   assert.equal((await listParts({ text: '71-CRCW' })).length, 1, 'the search index is rebuilt after an import');
 });
 
+test('a currency whose rate is not set (0) is an error, not a free conversion', async () => {
+  const db = useFreshLibrary();
+  db.exec("INSERT INTO fx_rate (currency, to_base) VALUES ('EUR', 0)");
+  const r = await importCsv([csv('parts.csv', ['pn,description,standard_cost,currency', '00001,Thing,2,EUR'])], ADD, false);
+  assert.match(r.files[0].errors[0].message, /No exchange rate from EUR/);
+});
+
 test('in add mode, sources.csv can still fill in what parts.csv created in the same import', async () => {
   useFreshLibrary();
   const r = await importCsv([

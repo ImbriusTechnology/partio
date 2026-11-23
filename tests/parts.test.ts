@@ -162,3 +162,16 @@ test('merging moves stock and sources, keeps history, and archives the duplicate
   await assert.rejects(setPartsStatus([dup], 'active'), /stays archived/);
   await assert.rejects(mergeParts(keep, dup), /already been merged/);
 });
+
+test('exchange rates: set, change and remove; the base currency is fixed at 1', async () => {
+  useFreshLibrary();
+  const { setRate, deleteRate, listRates } = await import('../src/lib/reference.ts');
+  await setRate('eur', 1.08);
+  await setRate('EUR', 1.1);
+  assert.deepEqual((await listRates()).map((r) => [r.currency, r.to_base]), [['EUR', 1.1], ['USD', 1]]);
+  await assert.rejects(setRate('USD', 2), /base currency/);
+  await assert.rejects(setRate('AUD', 0), /above zero/);
+  await assert.rejects(deleteRate('USD'), /can’t be removed/);
+  await deleteRate('EUR');
+  assert.deepEqual((await listRates()).map((r) => r.currency), ['USD']);
+});

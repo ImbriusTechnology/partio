@@ -5,6 +5,10 @@ All notable changes to Partio Inventory are recorded here. Dates are in YYYY-MM-
 ## Unreleased
 
 ### Added
+- Settings → Exchange rates: add, change and remove rates to your base currency.
+- First-run screen: choose your currency (guessed from your system), add starter categories and vendors, then try the demo library, import your parts from CSV, or start empty.
+- Demo library: 27 example parts (PNs from 90001) with locations, stock and suppliers. Settings can load it later or remove it; demo parts you've used since are kept.
+- Changing the base currency clears exchange rates, which were relative to the old one.
 - CSV import and export (format version 1, see docs/csv-format.md): locations, parts, stock and sources.
   Check shows exactly what an import will do, file by file and line by line, without changing anything;
   the import itself is all or nothing, with a backup first. Templates and a full library export are in Settings.

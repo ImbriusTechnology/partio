@@ -2,17 +2,21 @@
 import { useState } from 'react';
 import { backupLibrary, libraryInfo, query } from '../lib/db.ts';
 import {
-  addPackage, addVendor, deletePackage, deleteVendor, getSetting, listPackages, listVendors, packageLabel, setPackageAliases,
-  setSetting, updatePackage, updateVendor, type PackageRow, type Vendor,
+  addPackage, addVendor, deletePackage, deleteRate, deleteVendor, getSetting, listPackages, listRates, listVendors, packageLabel,
+  setPackageAliases, setRate, updatePackage, updateVendor, type PackageRow, type Rate, type Vendor,
 } from '../lib/reference.ts';
+import { demoFiles } from '../demo/index.ts';
+import { DEMO, demoCounts, loadDemo, removeDemo, setBaseCurrency } from '../lib/setup.ts';
 import { ImportExportSection } from './ImportExport.tsx';
-import { ConfirmButton, Field, Modal, SearchInput, Select, useAction, useLoad } from './ui.tsx';
+import { ConfirmButton, Field, Modal, SearchInput, Select, useAction, useLoad, useToast } from './ui.tsx';
 
 export function SettingsView({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   return (
     <div className="settings-view">
-      <LibrarySection refreshKey={refreshKey} />
+      <LibrarySection refreshKey={refreshKey} onChanged={onChanged} />
+      <RatesSection refreshKey={refreshKey} onChanged={onChanged} />
       <ImportExportSection onChanged={onChanged} />
+      <DemoSection refreshKey={refreshKey} onChanged={onChanged} />
       <VendorsSection refreshKey={refreshKey} onChanged={onChanged} />
       <PackagesSection refreshKey={refreshKey} onChanged={onChanged} />
     </div>
@@ -27,7 +31,7 @@ function breakable(path: string | undefined) {
   return path.split(/(?<=[/\\])/).map((seg, i) => <span key={i}>{seg}<wbr /></span>);
 }
 
-function LibrarySection({ refreshKey }: { refreshKey: number }) {
+function LibrarySection({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const act = useAction();
   const info = useLoad(libraryInfo, [refreshKey]);
   const [tick, setTick] = useState(0);
@@ -47,19 +51,119 @@ function LibrarySection({ refreshKey }: { refreshKey: number }) {
       <div className="row">
         <button onClick={() => void act(async () => { const path = await backupLibrary(); return path; }, 'Backed up')}>Back up now</button>
         <span className="spacer" />
-        <Field label="Base currency" hint="Costs are stored in this currency">
+        <Field label="Base currency" hint="Costs are stored in this currency. Changing it sets the other exchange rates to 0 until you enter them again; existing costs aren’t converted.">
           <div className="row">
             <input value={shown} onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))} style={{ width: 70 }} className="mono" />
             <button disabled={currency === null || currency === base.data}
               onClick={() => void act(async () => {
-                if (!/^[A-Z]{3}$/.test(shown)) throw new Error('Use a three-letter code such as USD or AUD');
-                await setSetting('base_currency', shown);
+                await setBaseCurrency(shown);
                 setCurrency(null);
                 setTick((t) => t + 1);
+                onChanged();   // the exchange rates below are relative to the base, so they reload too
               }, 'Base currency saved')}>Save</button>
           </div>
         </Field>
       </div>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ exchange rates
+
+function RatesSection({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+  const act = useAction();
+  const [tick, setTick] = useState(0);
+  const rates = useLoad(listRates, [refreshKey, tick]);
+  const base = useLoad(async () => (await getSetting('base_currency')) ?? 'USD', [refreshKey, tick]);
+  const [currency, setCurrency] = useState('');
+  const [value, setValue] = useState('');
+  const b = base.data ?? 'USD';
+  const done = () => { setTick((t) => t + 1); onChanged(); };
+  const add = () => act(async () => {
+    await setRate(currency, Number(value));
+    setCurrency('');
+    setValue('');
+    done();
+  }, `${currency.toUpperCase()} rate saved`);
+  return (
+    <section className="card">
+      <h3>Exchange rates</h3>
+      <p className="small muted">How much one unit of each currency is worth in your base currency ({b}). Used to convert costs
+        given in other currencies, for example in CSV imports. Rates aren’t updated automatically: check them now and then.</p>
+      <table className="grid compact rates">
+        <thead><tr><th>Currency</th><th>Rate</th><th>Updated</th><th /></tr></thead>
+        <tbody>
+          {(rates.data ?? []).map((r) => <RateRow key={`${r.currency}:${r.to_base}:${b}`} rate={r} base={b} onSaved={done} />)}
+          <tr>
+            <td><input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))} placeholder="EUR" className="mono" style={{ width: 70 }} /></td>
+            <td>1 {currency || '…'} = <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="1.08" style={{ width: 90 }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void add(); }} /> {b}</td>
+            <td />
+            <td className="row-actions"><button disabled={!currency || !value} onClick={() => void add()}>Add</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function RateRow({ rate, base, onSaved }: { rate: Rate; base: string; onSaved: () => void }) {
+  const act = useAction();
+  const unset = rate.to_base <= 0;
+  const [value, setValue] = useState(unset ? '' : String(rate.to_base));
+  const isBase = rate.currency === base;
+  const changed = value.trim() !== (unset ? '' : String(rate.to_base)) && value.trim() !== '';
+  const save = () => act(async () => { await setRate(rate.currency, Number(value)); onSaved(); }, `${rate.currency} rate saved`);
+  const inverse = rate.to_base > 0 ? Number((1 / rate.to_base).toPrecision(4)) : null;
+  return (
+    <tr className={unset && !isBase ? 'unset' : ''}>
+      <td className="mono">{rate.currency}{isBase && <span className="muted small"> (base)</span>}</td>
+      <td>
+        {isBase ? <>1 {base} = 1 {base}</> : <>
+          1 {rate.currency} = <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" style={{ width: 90 }}
+            placeholder={unset ? 'not set' : ''} onKeyDown={(e) => { if (e.key === 'Enter' && changed) void save(); }} /> {base}
+          {inverse !== null
+            ? <span className="muted small"> · 1 {base} = {inverse} {rate.currency}</span>
+            : <span className="warn-text small"> · not set: enter a rate</span>}
+        </>}
+      </td>
+      <td className="small muted">{unset && !isBase ? '' : rate.updated_at?.slice(0, 10) ?? ''}</td>
+      <td className="row-actions">
+        {!isBase && changed && <button onClick={() => void save()}>Save</button>}
+        {!isBase && !changed && <ConfirmButton className="link" label="Remove" confirmLabel="Remove?"
+          onConfirm={() => void act(async () => { await deleteRate(rate.currency); onSaved(); }, `${rate.currency} rate removed`)} />}
+      </td>
+    </tr>
+  );
+}
+
+// ------------------------------------------------------------------ demo library
+
+function DemoSection({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+  const act = useAction();
+  const toast = useToast();
+  const counts = useLoad(demoCounts, [refreshKey]);
+  const loaded = !!(counts.data && (counts.data.parts || counts.data.locations));
+  return (
+    <section className="card">
+      <h3>Demo library</h3>
+      {loaded ? (
+        <>
+          <p className="small">The demo library is loaded: {counts.data!.parts} parts and {counts.data!.locations} locations, marked “{DEMO}”.
+            Removing it keeps any demo part you’ve used since (stock changes, BOMs, the shopping list) and any location still holding them; they become yours.</p>
+          <ConfirmButton className="danger" label="Remove demo data" confirmLabel="Remove the demo library?"
+            onConfirm={() => void act(async () => {
+              const r = await removeDemo();
+              onChanged();
+              toast(`Removed ${r.removedParts} demo parts and ${r.removedLocations} locations${r.keptParts ? `; kept ${r.keptParts} parts you’ve used` : ''}`);
+            })} />
+        </>
+      ) : (
+        <>
+          <p className="small muted">About 25 example parts, with locations, stock and suppliers, to try things out on. Their PNs start at 90001.</p>
+          <button onClick={() => void act(async () => { await loadDemo(demoFiles()); onChanged(); }, 'Demo library loaded')}>Load the demo library</button>
+        </>
+      )}
     </section>
   );
 }

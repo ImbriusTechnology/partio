@@ -91,7 +91,7 @@ class Context {
     const c = currency.trim().toUpperCase();
     if (!c || c === this.base) return amount;
     const rate = this.rates.get(c);
-    if (rate === undefined) throw new Error(`No exchange rate from ${c} to ${this.base}; leave currency blank to mean ${this.base}`);
+    if (!rate) throw new Error(`No exchange rate from ${c} to ${this.base} (add it in Settings → Exchange rates), or leave currency blank to mean ${this.base}`);
     return Math.round(amount * rate * 1e6) / 1e6;
   }
 
@@ -272,8 +272,10 @@ async function importStock(ctx: Context, r: Row): Promise<Outcome> {
     return delta === 0 ? 'unchanged' : 'updated';
   }
   if (qty === 0) return 'unchanged';
+  // Stock brought in by a tagged import (the demo) is tagged too, so it can be told apart from yours later.
+  const batch = ctx.opts.source ? `${ctx.opts.source}:${batchId()}` : batchId();
   await execute(`INSERT INTO stock_txn (batch_id, kind, part_id, location_id, qty_delta, unit_cost, note) VALUES (?, 'opening', ?, ?, ?, ?, ?)`,
-    [batchId(), part.id, locationId, qty, unitCost, note ?? 'Imported']);
+    [batch, part.id, locationId, qty, unitCost, note ?? (ctx.opts.source ? `Opening stock (${ctx.opts.source})` : 'Imported')]);
   await execute('UPDATE part SET default_location_id = ? WHERE id = ? AND default_location_id IS NULL', [locationId, part.id]);
   return 'created';
 }

@@ -1,0 +1,15 @@
+pn,manufacturer,mpn,datasheet_url,lifecycle,preferred,vendor,sku,url,packaging,moq,order_multiple,currency,price_breaks
+90003,Yageo,RC0805FR-0710KL,,active,yes,Mouser,603-RC0805FR-0710KL,,Cut tape,1,,USD,1:0.10; 10:0.05; 100:0.016
+90003,Vishay,CRCW080510K0FKEA,,active,no,,,,,,,,
+90005,Samsung,CL10B104KB8NNNC,,active,yes,LCSC,C1591,,Cut tape,1,,USD,100:0.0021; 1000:0.0017
+90006,Samsung,CL10A105KB8NNNC,,active,yes,LCSC,C15849,,Cut tape,1,,USD,100:0.0030; 1000:0.0024
+90007,Samsung,CL21A106KAYNNNE,,active,yes,LCSC,C15850,,Cut tape,1,,USD,100:0.0090; 1000:0.0072
+90009,Diodes Incorporated,1N4148W-7-F,,active,yes,Mouser,621-1N4148W-F,,Cut tape,1,,USD,1:0.10; 100:0.024
+90010,MCC,SS14,,active,yes,LCSC,C2480,,Cut tape,1,,USD,100:0.012; 1000:0.009
+90011,onsemi,BC547BTA,,active,yes,Mouser,512-BC547BTA,,Ammo pack,1,,USD,1:0.19; 100:0.05
+90013,Kingbright,WP7113ID,,active,yes,Mouser,604-WP7113ID,,Bulk,1,,USD,1:0.30; 100:0.11
+90014,Texas Instruments,LM358DR,,active,yes,Mouser,595-LM358DR,,Cut tape,1,,USD,1:0.45; 10:0.31; 100:0.17
+90015,Texas Instruments,NE555DR,,active,yes,Mouser,595-NE555DR,,Cut tape,1,,USD,1:0.50; 10:0.36; 100:0.21
+90016,Microchip,ATMEGA328P-AU,,active,yes,Mouser,556-ATMEGA328P-AU,,Tray,1,,USD,1:2.90; 25:2.45; 100:2.20
+90017,Advanced Monolithic Systems,AMS1117-3.3,,active,yes,LCSC,C6186,,Cut tape,1,,USD,10:0.11; 100:0.08
+90020,GCT,USB4105-GF-A,,active,yes,Mouser,640-USB4105-GF-A,,Cut tape,1,,USD,1:0.80; 10:0.65; 100:0.50

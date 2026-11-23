@@ -1,6 +1,7 @@
 // The app shell: navigation, quick find, new part, and the screens.
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { IconAssemblies, IconCart, IconLocations, IconParts, IconSearch, IconSettings } from './components/icons.tsx';
+import { FirstRun } from './components/FirstRun.tsx';
 import { LocationsView } from './components/LocationsView.tsx';
 import { PartEditor } from './components/PartEditor.tsx';
 import { PartsView } from './components/PartsView.tsx';
@@ -13,6 +14,7 @@ import { resolveCode } from './lib/parts.ts';
 import { modKey, shortcutLabel } from './lib/platform.ts';
 import { listenForScans, scanTarget } from './lib/scanner.ts';
 import { ensureSearchIndex } from './lib/search.ts';
+import { needsSetup } from './lib/setup.ts';
 
 type View = 'parts' | 'locations' | 'assemblies' | 'purchasing' | 'settings';
 const NAV: Array<{ view: View; label: string; Icon: typeof IconParts }> = [
@@ -36,6 +38,7 @@ function Shell() {
   const changed = useCallback(() => setRefreshKey((k) => k + 1), []);
   const toast = useToast();
   const counts = useLoad(() => queryOne<{ parts: number }>("SELECT COUNT(*) AS parts FROM part WHERE status <> 'archived'"), [refreshKey]);
+  const setup = useLoad(needsSetup, []);
 
   const openPart = useCallback((id: number | null) => { setPartId(id); setView('parts'); }, []);
   const [locFocus, setLocFocus] = useState<{ id: number; n: number } | null>(null);
@@ -76,6 +79,9 @@ function Shell() {
   useEffect(() => {
     ensureSearchIndex().then(changed, (e) => toast(`Search index rebuild failed: ${e?.message ?? e}`, 'error'));
   }, [changed, toast]);
+
+  if (setup.data === undefined && !setup.error) return <div className="app" />;
+  if (setup.data) return <FirstRun onDone={() => { setup.reload(); changed(); }} />;
 
   return (
     <div className="app">

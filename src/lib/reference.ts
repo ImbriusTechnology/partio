@@ -16,6 +16,32 @@ export async function setSetting(key: string, value: string | null): Promise<voi
   await execute('INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value', [key, value]);
 }
 
+// ------------------------------------------------------------------ exchange rates
+
+/** A rate says what one unit of `currency` is worth in the base currency (to_base). 0 means not set yet. */
+export interface Rate { currency: string; to_base: number; updated_at: string | null }
+
+export async function listRates(): Promise<Rate[]> {
+  return query<Rate>('SELECT currency, to_base, updated_at FROM fx_rate ORDER BY currency');
+}
+
+/** Add or change the rate for a currency: 1 `currency` = `toBase` of the base currency. */
+export async function setRate(currency: string, toBase: number): Promise<void> {
+  const c = currency.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) throw new Error('Use a three-letter currency code such as USD or EUR');
+  const base = (await getSetting('base_currency')) ?? 'USD';
+  if (c === base) throw new Error(`${c} is the base currency; its rate is always 1`);
+  if (!Number.isFinite(toBase) || toBase <= 0) throw new Error('The rate should be a number above zero');
+  await execute(`INSERT INTO fx_rate (currency, to_base, updated_at) VALUES (?, ?, datetime('now'))
+    ON CONFLICT (currency) DO UPDATE SET to_base = excluded.to_base, updated_at = excluded.updated_at`, [c, toBase]);
+}
+
+export async function deleteRate(currency: string): Promise<void> {
+  const base = (await getSetting('base_currency')) ?? 'USD';
+  if (currency === base) throw new Error('The base currency’s rate can’t be removed');
+  await execute('DELETE FROM fx_rate WHERE currency = ?', [currency]);
+}
+
 // ------------------------------------------------------------------ PN series
 
 export interface Series { id: number; name: string; prefix: string; width: number; range_start: number; range_end: number; next_value: number; retired: number }

@@ -22,7 +22,8 @@ export function nodeBackend(db: DatabaseSync): Backend {
   };
   return {
     async query(sql, params) {
-      return db.prepare(sql).all(...params.map((p) => bind(p, [], 0))) as Row[];
+      // Plain objects, as the Rust side sends them (node:sqlite rows have no prototype).
+      return db.prepare(sql).all(...params.map((p) => bind(p, [], 0))).map((r) => ({ ...r })) as Row[];
     },
     async execute(sql, params) {
       return run(sql, params.map((p) => bind(p, [], 0)));

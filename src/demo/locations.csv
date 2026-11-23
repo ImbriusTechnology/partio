@@ -1,0 +1,12 @@
+path,code,description
+Demo cabinet,,Demo: a small parts cabinet
+Demo cabinet > Drawer 1,,Passives
+Demo cabinet > Drawer 1 > Bin 01,,Resistors
+Demo cabinet > Drawer 1 > Bin 02,,Capacitors
+Demo cabinet > Drawer 2,,Semiconductors
+Demo cabinet > Drawer 2 > Bin 01,,Diodes and transistors
+Demo cabinet > Drawer 2 > Bin 02,,ICs
+Demo cabinet > Drawer 3,,Connectors and switches
+Demo shelf,,Demo: boxes on a shelf
+Demo shelf > Hardware box,,"Screws, nuts, spacers"
+Demo shelf > Boards box,,PCBs and finished boards

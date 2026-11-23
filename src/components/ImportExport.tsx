@@ -37,7 +37,7 @@ export function ImportExportSection({ onChanged }: { onChanged: () => void }) {
 
 type Stage = 'choose' | 'checked' | 'done';
 
-function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+export function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const act = useAction();
   const input = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<ImportFile[]>([]);

@@ -1,0 +1,28 @@
+pn,location,qty
+90002,Demo cabinet > Drawer 1 > Bin 01,500
+90003,Demo cabinet > Drawer 1 > Bin 01,500
+90001,Demo cabinet > Drawer 1 > Bin 01,200
+90004,Demo cabinet > Drawer 1 > Bin 01,200
+90005,Demo cabinet > Drawer 1 > Bin 02,400
+90006,Demo cabinet > Drawer 1 > Bin 02,150
+90007,Demo cabinet > Drawer 1 > Bin 02,80
+90008,Demo cabinet > Drawer 1 > Bin 02,25
+90009,Demo cabinet > Drawer 2 > Bin 01,100
+90010,Demo cabinet > Drawer 2 > Bin 01,50
+90011,Demo cabinet > Drawer 2 > Bin 01,40
+90012,Demo cabinet > Drawer 2 > Bin 01,60
+90013,Demo cabinet > Drawer 2 > Bin 01,30
+90014,Demo cabinet > Drawer 2 > Bin 02,12
+90015,Demo cabinet > Drawer 2 > Bin 02,10
+90016,Demo cabinet > Drawer 2 > Bin 02,5
+90017,Demo cabinet > Drawer 2 > Bin 02,8
+90018,Demo cabinet > Drawer 2 > Bin 02,6
+90019,Demo cabinet > Drawer 2 > Bin 02,4
+90020,Demo cabinet > Drawer 3,10
+90021,Demo cabinet > Drawer 3,5
+90022,Demo cabinet > Drawer 3,20
+90023,Demo shelf > Hardware box,100
+90024,Demo shelf > Hardware box,100
+90025,Demo shelf > Hardware box,250
+90026,Demo shelf > Boards box,5
+90027,Demo shelf > Boards box,2

@@ -4,7 +4,7 @@ An open-source desktop app for keeping track of electronic parts: what you have,
 
 Partio is local-only. Your library is one SQLite file on your own computer: no account, no server, no telemetry. The only time it talks to the internet is when you turn on vendor lookups (DigiKey, Mouser, element14) with your own API keys.
 
-> **Status:** early development (phase 1 of 7). The app builds and runs, but most screens are still empty. See [the roadmap](#roadmap).
+> **Status:** early development. Parts, locations, stock, scanning and CSV import/export work; assemblies, purchasing and label printing are still to come. See [the roadmap](#roadmap).
 
 ## Installing
 
@@ -49,9 +49,9 @@ npm run tauri build           # build an installer for this platform
 
 ## Roadmap
 
-1. **Project setup:** repo, schema, app shell, CI builds for all three platforms *(in progress)*
-2. **Core inventory:** parts, manufacturer and vendor parts, categories, locations, stock, search, merging duplicates
-3. **First run and demo library**
+1. **Project setup:** repo, schema, app shell, CI builds for all three platforms *(done)*
+2. **Core inventory:** parts, manufacturer and vendor parts, categories, locations, stock, search, merging duplicates, barcode scanning *(done)*
+3. **First run and demo library** *(done)*
 4. **CSV import and export** for locations, parts, stock and sources, with downloadable templates *(done early: see [the format](docs/csv-format.md))*
 5. **Assemblies and purchasing:** BOMs (with `bom.csv` import), builds, shopping list, vendor lookups
 6. **Labels on every platform:** QR labels for parts and locations
