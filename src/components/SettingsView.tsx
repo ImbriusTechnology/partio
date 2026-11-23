@@ -19,6 +19,12 @@ export function SettingsView({ refreshKey, onChanged }: { refreshKey: number; on
 
 // ------------------------------------------------------------------ library
 
+/** A file path that may wrap after any slash (and only there), so a long path breaks between folders. */
+function breakable(path: string | undefined) {
+  if (!path) return '…';
+  return path.split(/(?<=[/\\])/).map((seg, i) => <span key={i}>{seg}<wbr /></span>);
+}
+
 function LibrarySection({ refreshKey }: { refreshKey: number }) {
   const act = useAction();
   const info = useLoad(libraryInfo, [refreshKey]);
@@ -30,10 +36,10 @@ function LibrarySection({ refreshKey }: { refreshKey: number }) {
   return (
     <section className="card">
       <h3>Library</h3>
-      <dl className="facts">
-        <div><dt>Database</dt><dd className="mono small">{info.data?.database ?? '…'}</dd></div>
-        <div><dt>Backups</dt><dd className="mono small">{info.data?.backupDir ?? '…'}</dd></div>
-        <div><dt>Schema</dt><dd className="small">{schema.data?.map((m) => m.name.replace(/\.sql$/, '')).join(', ') ?? '…'}</dd></div>
+      <dl className="path-list">
+        <dt>Database</dt><dd className="mono">{breakable(info.data?.database)}</dd>
+        <dt>Backups</dt><dd className="mono">{breakable(info.data?.backupDir)}</dd>
+        <dt>Schema</dt><dd>{schema.data?.map((m) => m.name.replace(/\.sql$/, '')).join(', ') ?? '…'}</dd>
       </dl>
       <p className="small muted">A backup is written the first time Partio opens each day; the newest 30 are kept.</p>
       <div className="row">
