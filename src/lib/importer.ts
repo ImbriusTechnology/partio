@@ -4,7 +4,7 @@
 // is the import run for real and then rolled back, so it reports exactly what would happen, row by row, and
 // changes nothing. Committing runs it again and keeps it, but only if no row had an error: all or nothing.
 import { batchId, execute, query, queryOne, savepoint, withTransaction } from './db.ts';
-import { COLUMNS, FILE_LABEL, FILE_ORDER, columnNames, guessKind, type FileKind } from './csvFormat.ts';
+import { COLUMNS, FILE_LABEL, FILE_ORDER, LIBRARY_BOM_ONLY, SINGLE_BOM_COLUMNS, columnNames, guessKind, type FileKind } from './csvFormat.ts';
 import { parseCsv } from './csv.ts';
 import { addLocation, ensureLocationPath, findLocation, restoreLocation } from './locations.ts';
 import {
@@ -25,6 +25,11 @@ export interface ImportOptions {
   stockMode: 'add' | 'set';
   /** Tag for everything created, e.g. 'demo' for the demo library. */
   source?: string | null;
+  /**
+   * Importing a BOM for one assembly (from its Assemblies screen): blank or missing assembly_pn and rev
+   * mean this assembly and revision, and rows for any other assembly are errors.
+   */
+  bomFor?: { assemblyPn: string; rev: string } | null;
 }
 
 export interface RowError { line: number; message: string }
@@ -36,6 +41,8 @@ export interface FileReport {
   /** A problem with the file as a whole (unreadable, unknown kind, missing columns). */
   problem: string | null;
   errors: RowError[];
+  /** Things worth knowing that don't stop the import (e.g. a BOM line whose part isn't found). */
+  warnings: RowError[];
 }
 
 export interface ImportReport {
@@ -43,6 +50,7 @@ export interface ImportReport {
   /** Things created along the way that weren't rows of their own file. */
   alsoCreated: { categories: string[]; packages: string[]; manufacturers: string[]; vendors: string[]; locations: string[] };
   errorCount: number;
+  warningCount: number;
   unknownColumnCount: number;
   committed: boolean;
 }
@@ -74,6 +82,11 @@ class Context {
   explicitLocations = new Set<number>();
   /** Manufacturer parts created earlier in this import: later rows may fill them in even in add mode. */
   newMfrParts = new Set<number>();
+  /** BOM revisions met so far in this import: their id, whether they existed before it (and so are left alone), the next line number. */
+  revs = new Map<string, { id: number; existed: boolean; nextLine: number; lines: Set<number> }>();
+  fileName = '';
+  /** Warnings from the row being imported. */
+  warnings: string[] = [];
   opts: ImportOptions;
   constructor(opts: ImportOptions) { this.opts = opts; }
 
@@ -380,16 +393,79 @@ async function importSource(ctx: Context, r: Row): Promise<Outcome> {
   return outcome;
 }
 
+// ------------------------------------------------------------------ bom.csv
+
+const REV_STATUSES = ['draft', 'released', 'obsolete'];
+
+async function importBomLine(ctx: Context, r: Row): Promise<Outcome> {
+  // A single-BOM file (Assemblies → Import BOM…) names no assembly or revision: they come from the dialog.
+  const only = ctx.opts.bomFor;
+  const apn = only ? only.assemblyPn : r.get('assembly_pn').trim();
+  if (!apn) throw new Error('assembly_pn is empty');
+  const rev = (only ? only.rev : r.get('rev')).trim().toUpperCase();
+  if (!rev) throw new Error(only ? 'Give the revision to import it as' : 'rev is empty');
+  if (rev.length > 10) throw new Error('rev should be short, e.g. A, B or 1.2');
+  const assembly = await ctx.partByPn(apn);
+  if (!assembly) throw new Error(`No part ${apn}. Add the assembly first (in parts.csv or on the Parts screen).`);
+  const status = only ? '' : r.get('status').trim().toLowerCase();
+  const project = only ? '' : r.get('project').trim();
+  if (status && !REV_STATUSES.includes(status)) throw new Error(`status should be one of ${REV_STATUSES.join(', ')}, not “${status}”`);
+
+  const key = `${assembly.id}|${rev}`;
+  let state = ctx.revs.get(key);
+  if (!state) {
+    const existing = await queryOne<{ id: number }>('SELECT id FROM bom_rev WHERE part_id = ? AND rev = ?', [assembly.id, rev]);
+    if (existing && only) throw new Error(`${apn} already has a Rev ${rev}. Choose another revision to import it as.`);
+    if (existing) state = { id: existing.id, existed: true, nextLine: 0, lines: new Set() };
+    else {
+      // A tagged import (the demo) tags its revisions too: source_file 'demo:bom.csv'.
+      const sourceFile = ctx.opts.source ? `${ctx.opts.source}:${ctx.fileName}` : ctx.fileName || null;
+      const id = (await execute(`INSERT INTO bom_rev (part_id, rev, status, project_code, source_file) VALUES (?, ?, 'draft', ?, ?)`,
+        [assembly.id, rev, project || null, sourceFile])).lastInsertId;
+      await execute("UPDATE part SET kind = 'assembly' WHERE id = ? AND kind = 'component'", [assembly.id]);
+      state = { id, existed: false, nextLine: 1, lines: new Set() };
+    }
+    ctx.revs.set(key, state);
+  }
+  // A revision that was already in the library is never changed by an import.
+  if (state.existed) return 'unchanged';
+  if (status && status !== 'draft') await execute('UPDATE bom_rev SET status = ? WHERE id = ?', [status, state.id]);
+  if (project) await execute('UPDATE bom_rev SET project_code = COALESCE(project_code, ?) WHERE id = ?', [project, state.id]);
+
+  const pn = r.get('pn').trim();
+  const mpn = r.get('mpn').trim();
+  if (!pn && !mpn) throw new Error('Give the part’s pn or mpn');
+  let part = pn ? await ctx.partByPn(pn) : undefined;
+  if (!part && pn && /^\d{1,4}$/.test(pn)) part = await ctx.partByPn(pn.padStart(5, '0'));   // spreadsheets drop leading zeros
+  if (!part && mpn) part = await ctx.partByMpn(mpn);
+
+  const designators = r.get('designators').split(/[\s,;]+/).filter(Boolean);
+  const des = [...new Set(designators)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const qty = number(r.get('qty'), 'qty', { above: 0 }) ?? (des.length || null);
+  if (qty === null) throw new Error('Give a qty, or designators to count');
+  if (r.get('dnp').trim() && !isBool(r.get('dnp'))) throw new Error(`dnp should be yes or no, not “${r.get('dnp')}”`);
+  // A part that isn't fitted doesn't need to be in the library, so an unresolved DNP line is no cause for a warning.
+  if (!part && !yes(r.get('dnp'))) ctx.warnings.push(`No part ${pn || `with MPN ${mpn}`}: the line is kept unresolved, to match up on the Assemblies screen`);
+  const line = number(r.get('line'), 'line', { integer: true, above: 0 }) ?? state.nextLine;
+  if (state.lines.has(line)) throw new Error(`Line ${line} appears twice in ${apn} Rev ${rev}`);
+  state.lines.add(line);
+  state.nextLine = Math.max(state.nextLine, line + 1);
+  await execute(`INSERT INTO bom_line (bom_rev_id, line_no, part_id, pn_as_imported, mpn_as_imported, qty, designators, dnp, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [state.id, line, part?.id ?? null, pn || null, mpn || null, qty, des.join(', ') || null, yes(r.get('dnp')) ? 1 : 0, r.get('note').trim() || null]);
+  return 'created';
+}
+
 const HANDLERS: Record<FileKind, (ctx: Context, r: Row) => Promise<Outcome>> = {
-  locations: importLocation, parts: importPart, stock: importStock, sources: importSource,
+  locations: importLocation, parts: importPart, stock: importStock, sources: importSource, bom: importBomLine,
 };
 
 // ------------------------------------------------------------------ the import
 
 interface Prepared { report: FileReport; rows: Row[] }
 
-function prepare(file: ImportFile): Prepared {
-  const report: FileReport = { name: file.name, kind: null, rows: 0, created: 0, updated: 0, unchanged: 0, unknownColumns: [], problem: null, errors: [] };
+function prepare(file: ImportFile, opts: ImportOptions): Prepared {
+  const report: FileReport = { name: file.name, kind: null, rows: 0, created: 0, updated: 0, unchanged: 0, unknownColumns: [], problem: null, errors: [], warnings: [] };
   let table;
   try {
     table = parseCsv(file.text);
@@ -400,13 +476,23 @@ function prepare(file: ImportFile): Prepared {
   const headers = table.headers.map((h) => h.trim().toLowerCase());
   const kind = file.kind ?? guessKind(file.name, headers);
   report.kind = kind;
-  if (!kind) { report.problem = 'Can’t tell what this file holds. Name it locations.csv, parts.csv, stock.csv or sources.csv.'; return { report, rows: [] }; }
+  if (!kind) { report.problem = 'Can’t tell what this file holds. Name it locations.csv, parts.csv, stock.csv, sources.csv or bom.csv.'; return { report, rows: [] }; }
   if (!headers.length) { report.problem = 'The file is empty'; return { report, rows: [] }; }
   const dup = headers.find((h, i) => h && headers.indexOf(h) !== i);
   if (dup) { report.problem = `The column ${dup} appears twice`; return { report, rows: [] }; }
-  const known = columnNames(kind);
+  // A single-BOM file (Assemblies → Import BOM…) has its own, shorter set of columns.
+  const single = kind === 'bom' && !!opts.bomFor;
+  if (single) {
+    const library = LIBRARY_BOM_ONLY.filter((c) => headers.includes(c));
+    if (library.includes('assembly_pn') || library.includes('rev')) {
+      report.problem = `This is a library BOM file (it has ${library.join(', ')} columns). Import it from Settings → Import CSV files…, or remove those columns to import it here.`;
+      return { report, rows: [] };
+    }
+  }
+  const known = single ? SINGLE_BOM_COLUMNS : columnNames(kind);
   report.unknownColumns = table.headers.filter((_, i) => headers[i] && !known.includes(headers[i]));
-  const missing = COLUMNS[kind].columns.filter((c) => c.required && !headers.includes(c.name)).map((c) => c.name);
+  if (single && !headers.includes('pn') && !headers.includes('mpn')) { report.problem = 'Needs a pn or mpn column'; return { report, rows: [] }; }
+  const missing = single ? [] : COLUMNS[kind].columns.filter((c) => c.required && !headers.includes(c.name)).map((c) => c.name);
   if (missing.length) { report.problem = `Missing column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`; return { report, rows: [] }; }
   const oneOf = COLUMNS[kind].oneOf;
   if (oneOf && !oneOf.some((c) => headers.includes(c))) { report.problem = `Needs a ${oneOf.join(' or ')} column`; return { report, rows: [] }; }
@@ -424,7 +510,7 @@ function prepare(file: ImportFile): Prepared {
  * With `commit` true the import is kept, but only if there are no errors; otherwise nothing changes.
  */
 export async function importCsv(files: ImportFile[], opts: ImportOptions, commit: boolean): Promise<ImportReport> {
-  const prepared = files.map(prepare);
+  const prepared = files.map((f) => prepare(f, opts));
   const ordered = [...prepared].sort((a, b) => FILE_ORDER.indexOf(a.report.kind ?? 'sources') - FILE_ORDER.indexOf(b.report.kind ?? 'sources'));
   const before = await query<{ t: string; n: number }>(`
     SELECT 'category' AS t, COALESCE(MAX(id), 0) AS n FROM category UNION ALL SELECT 'package', COALESCE(MAX(id), 0) FROM package
@@ -440,10 +526,13 @@ export async function importCsv(files: ImportFile[], opts: ImportOptions, commit
     for (const { report, rows } of ordered) {
       if (!report.kind || report.problem) continue;
       const handle = HANDLERS[report.kind];
+      ctx.fileName = report.name;
       for (const r of rows) {
+        ctx.warnings = [];
         try {
           const outcome = await savepoint('import_row', () => handle(ctx, r));
           report[outcome]++;
+          for (const w of ctx.warnings) report.warnings.push({ line: r.line, message: w });
         } catch (e) {
           report.errors.push({ line: r.line, message: String((e as Error)?.message ?? e) });
         }
@@ -472,6 +561,7 @@ export async function importCsv(files: ImportFile[], opts: ImportOptions, commit
     files: prepared.map((p) => p.report),
     alsoCreated,
     errorCount,
+    warningCount: prepared.reduce((n, p) => n + p.report.warnings.length, 0),
     unknownColumnCount: prepared.reduce((n, p) => n + p.report.unknownColumns.length, 0),
     committed,
   };
@@ -485,7 +575,7 @@ export function describeFile(f: FileReport, done: boolean): string {
   const kind = f.kind ? FILE_LABEL[f.kind].toLowerCase() : 'rows';
   const will = done ? '' : 'will be ';
   const parts = [
-    f.created && `${f.created} ${will}${f.kind === 'stock' ? 'added' : 'new'}`,
+    f.created && `${f.created} ${will}${f.kind === 'stock' ? 'added' : f.kind === 'bom' ? 'added as new lines' : 'new'}`,
     f.updated && `${f.updated} ${will}updated`,
     f.unchanged && `${f.unchanged} unchanged`,
   ].filter(Boolean);

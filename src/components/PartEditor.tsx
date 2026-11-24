@@ -30,10 +30,11 @@ function fieldsOf(p: PartDetail): PartFields {
   };
 }
 
-export function PartEditor({ part, template, initialText, onClose, onSaved }: {
+export function PartEditor({ part, template, initialText, preset, onClose, onSaved }: {
   part?: PartDetail;            // editing this part
   template?: PartDetail;        // new part pre-filled from this one
   initialText?: string;         // a new part's description to start with
+  preset?: Partial<PartFields>; // a new part's fields to start with (e.g. kind: 'assembly')
   onClose: () => void; onSaved: (id: number) => void;
 }) {
   const act = useAction();
@@ -44,7 +45,7 @@ export function PartEditor({ part, template, initialText, onClose, onSaved }: {
   const [f, setF] = useState<PartFields>(() => {
     if (part) return fieldsOf(part);
     if (template) return { ...fieldsOf(template), name: null, value_text: null, standard_cost: null, notes: null, status: 'active' };
-    return { ...emptyPartFields(), description: initialText ?? '' };
+    return { ...emptyPartFields(), ...preset, description: initialText ?? preset?.description ?? '' };
   });
   const [sources, setSources] = useState<SourceDraft[]>(() => {
     if (part) return sourcesOf(part);
@@ -52,7 +53,7 @@ export function PartEditor({ part, template, initialText, onClose, onSaved }: {
       return sourcesOf(template).map((s) => ({ ...s, id: undefined, mpn: '', datasheet_url: '', lifecycle: 'active',
         vendors: s.vendors.map((v) => ({ ...v, id: undefined, sku: '', url: '', breaks: '', origBreaks: undefined })) }));
     }
-    return [newSource(true)];
+    return preset?.kind === 'assembly' ? [] : [newSource(true)];
   });
   const [manualPn, setManualPn] = useState('');
   const [nextPn, setNextPn] = useState('');
@@ -98,7 +99,7 @@ export function PartEditor({ part, template, initialText, onClose, onSaved }: {
     onSaved(id);
   }, part ? 'Saved' : 'Part created');
 
-  const title = part ? `Edit ${part.pn}` : template ? `New part like ${template.pn}` : 'New part';
+  const title = part ? `Edit ${part.pn}` : template ? `New part like ${template.pn}` : preset?.kind === 'assembly' ? 'New assembly' : 'New part';
   return (
     <Modal title={title} onClose={onClose} xwide sticky
       footer={<>

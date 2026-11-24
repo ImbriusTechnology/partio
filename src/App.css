@@ -476,3 +476,9 @@ html:not(.platform-mac) .sidebar { padding-top: 10px; }
 .file-results li.bad { color: var(--danger); }
 .error-list { max-height: 260px; overflow: auto; border: 0.5px solid var(--line); border-radius: var(--radius); }
 .rates tr.unset td { background: var(--warn-soft); }
+
+/* Location paths shown as links: wrap between levels instead of running over the next field. */
+button.link.path-link { white-space: normal; text-align: left; overflow-wrap: anywhere; padding: 0; line-height: 1.35; }
+.facts dd { min-width: 0; overflow-wrap: anywhere; }
+.stock-loc { width: 100%; }
+.stock-loc .code-chip { white-space: nowrap; }

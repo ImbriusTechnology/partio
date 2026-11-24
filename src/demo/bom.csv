@@ -1,0 +1,12 @@
+assembly_pn,rev,status,project,line,pn,mpn,qty,designators,dnp,note
+90027,A,released,DEMO,1,90002,,,"R1, R2",,
+90027,A,released,DEMO,2,90003,,,R3,,
+90027,A,released,DEMO,3,90005,,,"C1, C2",,
+90027,A,released,DEMO,4,90007,,,C3,,
+90027,A,released,DEMO,5,90013,,,D1,,
+90027,A,released,DEMO,6,90015,,,U1,,
+90027,A,released,DEMO,7,90017,,,U2,,
+90027,A,released,DEMO,8,90020,,,J1,,
+90027,A,released,DEMO,9,90022,,,SW1,,
+90027,A,released,DEMO,10,90026,,1,PCB1,,
+90027,A,released,DEMO,11,90021,,1,J2,yes,Fit only for programming

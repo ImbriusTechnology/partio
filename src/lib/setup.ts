@@ -144,9 +144,10 @@ export async function loadDemo(files: ImportFile[]): Promise<ImportReport> {
 }
 
 /**
- * Remove the demo library. A demo part you've used since (stock changes, BOMs, builds, the shopping list,
- * a merge) is kept and becomes yours; so is a demo location that still holds kept stock or has your
- * locations inside it. Everything else the demo added goes, including its own stock records.
+ * Remove the demo library. A demo part you've used since (stock changes, your own BOMs or BOM revisions,
+ * builds, the shopping list, a merge) is kept and becomes yours, along with the demo parts a kept assembly's
+ * BOM needs; so is a demo location that still holds kept stock or has your locations inside it.
+ * Everything else the demo added goes, including its own stock records and BOM revisions.
  */
 export async function removeDemo(): Promise<{ removedParts: number; keptParts: number; removedLocations: number; keptLocations: number }> {
   const parts = await query<{ id: number; used: number }>(`
@@ -154,17 +155,30 @@ export async function removeDemo(): Promise<{ removedParts: number; keptParts: n
       (EXISTS (SELECT 1 FROM stock_txn t WHERE t.part_id = p.id AND t.batch_id NOT LIKE 'demo:%')
        OR EXISTS (SELECT 1 FROM bom_line b JOIN bom_rev r ON r.id = b.bom_rev_id JOIN part a ON a.id = r.part_id
                   WHERE b.part_id = p.id AND COALESCE(a.source, '') <> ?1)
-       OR EXISTS (SELECT 1 FROM bom_rev r WHERE r.part_id = p.id)
+       OR EXISTS (SELECT 1 FROM bom_rev r WHERE r.part_id = p.id AND COALESCE(r.source_file, '') NOT LIKE 'demo:%')
+       OR EXISTS (SELECT 1 FROM build b JOIN bom_rev r ON r.id = b.bom_rev_id WHERE r.part_id = p.id)
        OR EXISTS (SELECT 1 FROM build_line l WHERE l.part_id = p.id OR l.bom_part_id = p.id)
        OR EXISTS (SELECT 1 FROM shopping_item s WHERE s.part_id = p.id)
        OR EXISTS (SELECT 1 FROM part m WHERE m.merged_into_id = p.id)
        OR p.merged_into_id IS NOT NULL) AS used
     FROM part p WHERE p.source = ?1`, [DEMO]);
-  const remove = parts.filter((p) => !p.used).map((p) => p.id);
-  const keep = parts.filter((p) => p.used).map((p) => p.id);
+  const keepSet = new Set(parts.filter((p) => p.used).map((p) => p.id));
+  // A kept assembly keeps the demo parts on its BOMs (repeat, since those may be assemblies too).
+  for (let grew = true; grew;) {
+    grew = false;
+    if (!keepSet.size) break;
+    const kept = [...keepSet];
+    const needed = await query<{ id: number }>(`SELECT DISTINCT b.part_id AS id FROM bom_line b JOIN bom_rev r ON r.id = b.bom_rev_id
+      WHERE r.part_id IN (${kept.map(() => '?').join(',')}) AND b.part_id IS NOT NULL`, kept);
+    for (const n of needed) if (parts.some((p) => p.id === n.id) && !keepSet.has(n.id)) { keepSet.add(n.id); grew = true; }
+  }
+  const remove = parts.filter((p) => !keepSet.has(p.id)).map((p) => p.id);
+  const keep = [...keepSet];
   const ids = (list: number[]) => list.map(() => '?').join(',');
   const stmts: Statement[] = [];
   if (remove.length) {
+    // The demo's own BOM revisions go first (their lines refer to the parts being removed).
+    stmts.push({ sql: `DELETE FROM bom_rev WHERE part_id IN (${ids(remove)})`, params: remove });
     // Demo data is the one exception to "the stock ledger is never deleted": it was never real.
     stmts.push(
       { sql: `DELETE FROM stock WHERE part_id IN (${ids(remove)})`, params: remove },

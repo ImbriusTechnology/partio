@@ -1,7 +1,7 @@
 // Exporting the library as Partio CSV files, and the blank templates. An export imports back into an empty
 // library as the same parts, sources, locations and stock (tests/importexport.test.ts checks this).
 import { query } from './db.ts';
-import { COLUMNS, EXAMPLES, FILE_ORDER, columnNames, type FileKind } from './csvFormat.ts';
+import { COLUMNS, EXAMPLES, FILE_ORDER, SINGLE_BOM_COLUMNS, SINGLE_BOM_EXAMPLE, columnNames, type FileKind } from './csvFormat.ts';
 import { writeCsv } from './csv.ts';
 import { getSetting } from './reference.ts';
 
@@ -12,6 +12,11 @@ const fileName = (kind: FileKind) => `${kind}.csv`;
 /** One empty file per kind, with the header row and an example row. */
 export function templates(): CsvFile[] {
   return FILE_ORDER.map((kind) => ({ name: fileName(kind), text: writeCsv(columnNames(kind), EXAMPLES[kind]) }));
+}
+
+/** The template for Assemblies → Import BOM…: one BOM per file. */
+export function singleBomTemplate(): CsvFile {
+  return { name: 'bom-template.csv', text: writeCsv(SINGLE_BOM_COLUMNS, SINGLE_BOM_EXAMPLE) };
 }
 
 /** Pick the columns of a row object in the order the format lists them. */
@@ -60,7 +65,16 @@ export async function exportLibrary(): Promise<CsvFile[]> {
     ORDER BY p.pn, m.preferred DESC, m.id, vp.preferred DESC, vp.id`);
   for (const s of sources) s.price_breaks = formatBreaks(s.price_breaks as string | null);
 
-  const data: Record<FileKind, Array<Record<string, string | number | null>>> = { locations, parts, stock, sources };
+  // Every BOM line of every revision. An unresolved line keeps what its BOM said, so it stays unresolved.
+  const bom = await query<Record<string, string | number | null>>(`
+    SELECT a.pn AS assembly_pn, r.rev, r.status, r.project_code AS project, bl.line_no AS line,
+      COALESCE(p.pn, bl.pn_as_imported) AS pn, CASE WHEN p.id IS NULL THEN bl.mpn_as_imported END AS mpn,
+      bl.qty, bl.designators, CASE WHEN bl.dnp THEN 'yes' ELSE NULL END AS dnp, bl.note
+    FROM bom_line bl JOIN bom_rev r ON r.id = bl.bom_rev_id JOIN part a ON a.id = r.part_id LEFT JOIN part p ON p.id = bl.part_id
+    WHERE a.merged_into_id IS NULL
+    ORDER BY a.pn, length(r.rev), r.rev, bl.line_no`);
+
+  const data: Record<FileKind, Array<Record<string, string | number | null>>> = { locations, parts, stock, sources, bom };
   return FILE_ORDER.map((kind) => ({ name: fileName(kind), text: writeCsv(columnNames(kind), rowsFor(kind, data[kind])) }));
 }
 

@@ -1,6 +1,7 @@
 // The app shell: navigation, quick find, new part, and the screens.
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { IconAssemblies, IconCart, IconLocations, IconParts, IconSearch, IconSettings } from './components/icons.tsx';
+import { AssembliesView } from './components/AssembliesView.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 import { LocationsView } from './components/LocationsView.tsx';
 import { PartEditor } from './components/PartEditor.tsx';
@@ -43,6 +44,8 @@ function Shell() {
   const openPart = useCallback((id: number | null) => { setPartId(id); setView('parts'); }, []);
   const [locFocus, setLocFocus] = useState<{ id: number; n: number } | null>(null);
   const openLocation = useCallback((id: number) => { setLocFocus((f) => ({ id, n: (f?.n ?? 0) + 1 })); setView('locations'); }, []);
+  const [asmFocus, setAsmFocus] = useState<{ id: number; n: number } | null>(null);
+  const openAssembly = useCallback((id: number) => { setAsmFocus((f) => ({ id, n: (f?.n ?? 0) + 1 })); setView('assemblies'); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -105,10 +108,10 @@ function Shell() {
         {/* All views stay mounted, so each keeps its place (selection, filters, scroll) when you switch away and back. */}
         <Pane on={view === 'parts'}>
           <PartsView selectedId={partId} onSelect={setPartId} onNewPart={() => setNewPart({ text: '' })} onOpenLocation={openLocation}
-            refreshKey={refreshKey} onChanged={changed} />
+            onOpenAssembly={openAssembly} refreshKey={refreshKey} onChanged={changed} />
         </Pane>
         <Pane on={view === 'locations'}><LocationsView onOpenPart={openPart} focus={locFocus} refreshKey={refreshKey} onChanged={changed} /></Pane>
-        <Pane on={view === 'assemblies'}><ComingSoon what="BOMs and builds" when="phase 5" /></Pane>
+        <Pane on={view === 'assemblies'}><AssembliesView onOpenPart={openPart} focus={asmFocus} refreshKey={refreshKey} onChanged={changed} /></Pane>
         <Pane on={view === 'purchasing'}><ComingSoon what="The shopping list and vendor lookups" when="phase 5" /></Pane>
         <Pane on={view === 'settings'}><SettingsView refreshKey={refreshKey} onChanged={changed} /></Pane>
       </main>

@@ -1,6 +1,6 @@
 # Partio CSV format (version 1)
 
-Partio imports and exports its library as up to four CSV files. Use them to bring a parts list in from a spreadsheet or another tool, to move a library between computers, or as a readable backup. **Settings → Import and export** has blank templates with an example row in each.
+Partio imports and exports its library as up to five CSV files. Use them to bring a parts list in from a spreadsheet or another tool, to move a library between computers, or as a readable backup. **Settings → Import and export** has blank templates with an example row in each.
 
 | File | Holds | Needed? |
 | --- | --- | --- |
@@ -8,6 +8,7 @@ Partio imports and exports its library as up to four CSV files. Use them to brin
 | `parts.csv` | Parts, each with up to one manufacturer part and vendor part | The usual starting point |
 | `stock.csv` | How many of each part are where | Optional |
 | `sources.csv` | Further manufacturer parts and vendor parts, with price breaks | Optional |
+| `bom.csv` | Bills of materials: the lines of each assembly's BOM revisions | Optional |
 
 Files are imported in that order, so a later file can refer to what an earlier one creates. Files refer to each other by things people can read (PNs, MPNs, location codes and paths), never by internal ids.
 
@@ -27,12 +28,12 @@ Within version 1, columns are only ever added. Renaming or removing one would ma
 
 ## How an import runs
 
-1. Choose one or more files. Partio works out which is which from the file name (`locations`, `parts`, `stock`, `sources`), then from the columns.
+1. Choose one or more files. Partio works out which is which from the file name (`locations`, `parts`, `stock`, `sources`, `bom`), then from the columns.
 2. Choose what happens to rows for things that already exist:
    - **Add new only** skips them.
    - **Add and update** updates them with the cells that are filled in.
    - For `stock.csv`, choose **Add to stock** (quantities are added) or **Set stock to these counts** (quantities are counts, and stock is set to them).
-3. **Check** runs the whole import and then undoes it, changing nothing. It shows, for each file, how many rows are new, updated or unchanged; what else will be created; and every error, by file and line.
+3. **Check** runs the whole import and then undoes it, changing nothing. It shows, for each file, how many rows are new, updated or unchanged; what else will be created; every error, by file and line; and warnings, which don't stop the import (such as a BOM line whose part isn't found).
 4. **Import** is only possible when there are no errors. A backup is written first. Then everything is imported as one step: it all goes in, or none of it does.
 
 Parts match existing parts by `pn`. A row with no `pn` matches by manufacturer and MPN; if there's no match, it becomes a new part with the next free 5-digit number.
@@ -128,6 +129,64 @@ pn,manufacturer,mpn,datasheet_url,lifecycle,preferred,vendor,sku,url,packaging,m
 00001,Vishay,CRCW080510K0FKEA,,active,no,Mouser,71-CRCW080510K0FKEA,,Cut tape,1,,,1:0.10; 100:0.021
 ```
 
+## bom.csv
+
+There are two BOM formats:
+
+- **Library `bom.csv`**: any number of assemblies and revisions in one file, with `assembly_pn` and `rev` on every row. It's what **Export library…** writes, and what **Settings → Import CSV files…** reads. Use it for moving a whole library.
+- **Single BOM**: one assembly and revision per file, without the `assembly_pn`, `rev`, `status` and `project` columns. Import it with **Import BOM…** on the Assemblies screen (see below). The dialog has a **Download template…** button.
+
+### Library bom.csv
+
+One row per BOM line.
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `assembly_pn` | yes | PN of the assembly the BOM belongs to. It must already exist (add it in `parts.csv`, or on the Parts screen). A part of another kind becomes an assembly. |
+| `rev` | yes | BOM revision, e.g. `A`. |
+| `status` | | `draft` (default), `released` or `obsolete`. |
+| `project` | | Your project reference, if any. |
+| `line` | | Line number. Blank: the next one. |
+| `pn` | `pn` or `mpn` | The part used, by PN. A short number like `42` is also tried as `00042`. |
+| `mpn` | `pn` or `mpn` | Or the part by MPN. |
+| `qty` | | Quantity per assembly. Blank: the number of designators. |
+| `designators` | | Reference designators, separated by commas or spaces: `R1, R3, R9`. |
+| `dnp` | | `yes` if the part is not fitted. |
+| `note` | | Free text. |
+
+- Each assembly and revision in the file becomes a new BOM revision. **A revision already in the library is never changed** by an import; its rows count as unchanged. To change a BOM, copy the revision on the Assemblies screen, or import it under a new revision letter.
+- A line whose part isn't in the library yet doesn't stop the import. It's kept as an **unresolved** line, listed as a warning, and can be matched to a part later on the Assemblies screen. A revision with unresolved lines can't be released until they're matched.
+
+```csv
+assembly_pn,rev,status,project,line,pn,mpn,qty,designators,dnp,note
+00100,A,draft,,1,,AC0805FR-0710KL,,"R1, R2, R3",,
+00100,A,draft,,2,,AC0805FR-0710KL,1,R4,yes,Fit only for the 5 V version
+```
+
 ## Exporting
 
-**Settings → Import and export → Export library** writes all four files to a folder you choose. Importing them into an empty library gives the same parts, sources, locations and stock. Stock history, archived locations and merged duplicates aren't exported; use the backups for a complete copy.
+**Settings → Import and export → Export library** writes all five files to a folder you choose. Importing them into an empty library gives the same parts, sources, locations and stock. Stock history, builds, archived locations, merged duplicates and BOM revisions with no lines aren't exported; use the backups for a complete copy.
+
+### Single BOM (Assemblies → Import BOM…)
+
+One row per BOM line, for one assembly and revision: the assembly is the one on screen, and the revision is chosen in the dialog (the next letter, by default). It comes in as a new **draft** revision; release it on the Assemblies screen. Importing as a revision the assembly already has is an error.
+
+| Column | Required | Meaning |
+| --- | --- | --- |
+| `line` | | Line number. Blank: the next one. |
+| `pn` | `pn` or `mpn` | The part used, by PN. A short number like `42` is also tried as `00042`. |
+| `mpn` | `pn` or `mpn` | Or the part by MPN. |
+| `qty` | | Quantity per assembly. Blank: the number of designators. |
+| `designators` | | Reference designators, separated by commas or spaces. |
+| `dnp` | | `yes` if the part is not fitted. |
+| `note` | | Free text. |
+
+A file with `assembly_pn` or `rev` columns is a library `bom.csv` and is refused here. Other columns are reported as unknown, and can be ignored.
+
+BOMs exported from Altium, KiCad or Eagle can be imported by renaming their columns to match: usually `Designator` → `designators`, `Quantity` → `qty`, and your part-number column → `pn`.
+
+```csv
+line,pn,mpn,qty,designators,dnp,note
+1,,AC0805FR-0710KL,,"R1, R2, R3",,
+2,,AC0805FR-0710KL,1,R4,yes,Fit only for the 5 V version
+```

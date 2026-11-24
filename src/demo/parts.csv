@@ -25,4 +25,4 @@ pn,name,description,category,kind,value,tolerance_pct,package,unit,location,stan
 90024,,"Hex nut M3, stainless",Mechanical > Fastener,mechanical,,,,each,Demo shelf > Hardware box,,,active,,,,,,
 90025,,"Solder wire 0.7 mm, lead-free",,consumable,,,,g,Demo shelf > Hardware box,,,active,,,,,,
 90026,,"Demo blinky board, bare PCB rev A",,pcb,,,,each,Demo shelf > Boards box,,,active,,,,,,
-90027,,"Demo blinky board, assembled",,assembly,,,,each,Demo shelf > Boards box,,,active,Its BOM arrives with Assemblies,,,,,
+90027,,"Demo blinky board, assembled",,assembly,,,,each,Demo shelf > Boards box,,,active,Its BOM is on the Assemblies screen,,,,,

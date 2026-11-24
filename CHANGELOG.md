@@ -5,6 +5,11 @@ All notable changes to Partio Inventory are recorded here. Dates are in YYYY-MM-
 ## Unreleased
 
 ### Added
+- Assemblies screen: assemblies with their BOM revisions (draft, released, obsolete). Add, edit and delete lines; move designators to another part; resolve lines whose part wasn't found; copy a revision to change it; check stock for a build quantity.
+- bom.csv, a fifth CSV file: import BOMs with the same preview as the other files (a line whose part isn't found is kept unresolved, as a warning), and BOMs are included in exports.
+- Import BOM… on the Assemblies screen takes a simpler single-BOM file (line, pn and/or mpn, qty, designators, dnp, note) for the assembly on screen, imported as the revision chosen in the dialog. It has its own template.
+- A not-fitted (DNP) line whose part isn't in the library isn't flagged: no import warning, and it doesn't count as unresolved.
+- The demo blinky board has a released BOM.
 - Settings → Exchange rates: add, change and remove rates to your base currency.
 - First-run screen: choose your currency (guessed from your system), add starter categories and vendors, then try the demo library, import your parts from CSV, or start empty.
 - Demo library: 27 example parts (PNs from 90001) with locations, stock and suppliers. Settings can load it later or remove it; demo parts you've used since are kept.

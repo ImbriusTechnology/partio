@@ -17,9 +17,9 @@ import { Combo, ConfirmButton, Field, Modal, Select, copyText, fmtMoney, fmtQty,
 type StockMode = 'receive' | 'move' | 'count' | 'remove';
 type Dialog = { kind: 'edit' } | { kind: 'similar' } | { kind: 'merge' } | { kind: 'stock'; mode: StockMode; locationId?: number };
 
-export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocation, onDeleted }: {
+export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocation, onOpenAssembly, onDeleted }: {
   id: number; refreshKey: number; onChanged: () => void; onOpenPart: (id: number) => void;
-  onOpenLocation?: (id: number) => void; onDeleted?: () => void;
+  onOpenLocation?: (id: number) => void; onOpenAssembly?: (id: number) => void; onDeleted?: () => void;
 }) {
   const { data: p, error, reload } = useLoad(() => getPart(id), [id, refreshKey]);
   const blocker = useLoad(() => deleteBlocker(id), [id, refreshKey]);
@@ -76,7 +76,7 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
         <div><dt>Tolerance</dt><dd>{p.tolerance_pct !== null ? `${p.tolerance_pct}%` : '—'}</dd></div>
         <div><dt>Package</dt><dd>{p.package ?? '—'}</dd></div>
         <div><dt>Usual location</dt><dd>{p.location && p.location_id
-          ? <button className="link" onClick={() => onOpenLocation?.(p.location_id!)}>{p.location}</button> : '—'}</dd></div>
+          ? <button className="link path-link" onClick={() => onOpenLocation?.(p.location_id!)}>{p.location}</button> : '—'}</dd></div>
         <div><dt>Buy from</dt><dd>{buyFrom ? <>{buyFrom.vendor} <span className="mono small">{buyFrom.sku}</span></> : '—'}</dd></div>
         <div><dt>Standard cost</dt><dd>{p.standard_cost !== null ? fmtMoney(p.standard_cost, base.data ?? 'USD') : '—'}</dd></div>
       </dl>
@@ -97,7 +97,7 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
             <tbody>
               {p.stock.map((s) => (
                 <tr key={s.location_id}>
-                  <td><button className="link" onClick={() => onOpenLocation?.(s.location_id)}>{s.path}</button> <span className="code-chip">{s.code}</span></td>
+                  <td className="stock-loc"><button className="link path-link" onClick={() => onOpenLocation?.(s.location_id)}>{s.path}</button> <span className="code-chip">{s.code}</span></td>
                   <td className="num">{fmtQty(s.qty)}</td>
                   <td className="row-actions">
                     <button className="link" onClick={() => setDialog({ kind: 'stock', mode: 'count', locationId: s.location_id })}>Count</button>
@@ -152,10 +152,13 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
         ))}
       </section>
 
-      {p.bomRevs.length > 0 && (
+      {(p.bomRevs.length > 0 || p.kind === 'assembly') && (
         <section className="card">
-          <h3>Bill of materials</h3>
-          <p className="muted small">{p.bomRevs.map((r) => `Rev ${r.rev} (${r.lines} lines, ${r.status})`).join(' · ')}</p>
+          <div className="section-head">
+            <h3>Bill of materials</h3>
+            {onOpenAssembly && <div className="actions"><button onClick={() => onOpenAssembly(p.id)}>{p.bomRevs.length ? 'Open BOM' : 'Add a BOM'}</button></div>}
+          </div>
+          <p className="muted small">{p.bomRevs.length ? p.bomRevs.map((r) => `Rev ${r.rev} (${r.lines} lines, ${r.status})`).join(' · ') : 'No BOM yet.'}</p>
         </section>
       )}
 
@@ -165,7 +168,7 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
           <table className="grid compact">
             <tbody>
               {p.usedIn.map((u, i) => (
-                <tr key={i} onClick={() => onOpenPart(u.assembly_id)} className="clickable">
+                <tr key={i} onClick={() => (onOpenAssembly ?? onOpenPart)(u.assembly_id)} className="clickable" title="Open its BOM">
                   <td className="pn">{u.assembly_pn}</td><td>{u.assembly_desc}</td><td>Rev {u.rev}</td>
                   <td className="num">{fmtQty(u.qty)}</td><td className="muted small">{u.designators ?? ''}</td>
                 </tr>

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { useFreshLibrary } from './lib/backend.ts';
 import { MIGRATIONS_DIR } from './lib/db.ts';
+import { bomLines, copyRev, listRevs } from '../src/lib/bom.ts';
 import { addLocation } from '../src/lib/locations.ts';
 import { emptyPartFields, getPart, listParts, savePart } from '../src/lib/parts.ts';
 import { getSetting, listCategories, listVendors, setRate } from '../src/lib/reference.ts';
@@ -14,7 +15,7 @@ import {
 import { moveStock, receiveStock } from '../src/lib/stock.ts';
 
 const DEMO_DIR = join(MIGRATIONS_DIR, '..', 'src', 'demo');
-const demoFiles = () => ['locations', 'parts', 'stock', 'sources'].map((k) => ({ name: `${k}.csv`, text: readFileSync(join(DEMO_DIR, `${k}.csv`), 'utf8') }));
+const demoFiles = () => ['locations', 'parts', 'stock', 'sources', 'bom'].map((k) => ({ name: `${k}.csv`, text: readFileSync(join(DEMO_DIR, `${k}.csv`), 'utf8') }));
 
 test('the currency is guessed from the locale', () => {
   assert.equal(currencyForLocale('en-AU'), 'AUD');
@@ -69,6 +70,11 @@ test('the demo loads cleanly, with or without the starter data', async () => {
     assert.equal(p.on_hand, 12);
     assert.equal(p.mfrParts[0].vendorParts[0].sku, '595-LM358DR');
     if (starter) assert.deepEqual(r.alsoCreated.vendors, [], 'the demo uses the starter vendors');
+    assert.equal(r.warningCount, 0);
+    const blinky = (await listParts({ text: 'blinky assembled' }))[0];
+    const revs = await listRevs(blinky.id);
+    assert.deepEqual(revs.map((x) => [x.rev, x.status, x.project_code]), [['A', 'released', 'DEMO']]);
+    assert.equal((await bomLines(revs[0].id)).length, 11);
   }
 });
 
@@ -97,7 +103,7 @@ test('removing the demo keeps what you have used or added, and removes the rest'
   const myPart = await savePart({ partId: null, fields: { ...emptyPartFields(), description: 'Mine' }, sources: [] });
 
   const r = await removeDemo();
-  assert.deepEqual([r.removedParts, r.keptParts], [25, 2]);
+  assert.deepEqual([r.removedParts, r.keptParts], [25, 2], 'the demo assembly and its BOM go, though NE555 was on it');
   const left = (await listParts({ showArchived: true })).map((p) => p.pn).sort();
   assert.deepEqual(left, ['00001', '90014', '90015']);
   assert.ok(await getPart(myPart));
@@ -107,4 +113,17 @@ test('removing the demo keeps what you have used or added, and removes the rest'
   assert.ok(r.keptLocations >= 3);
   assert.equal(r.removedLocations + r.keptLocations, 11);
   assert.equal((await listParts({ text: 'resistor' })).length, 0, 'search no longer finds removed demo parts');
+});
+
+test('a demo assembly you gave your own revision is kept, with the demo parts its BOMs need', async () => {
+  useFreshLibrary();
+  await completeSetup({ currency: 'USD', starter: true });
+  await loadDemo(demoFiles());
+  const blinky = (await listParts({ text: 'blinky assembled' }))[0];
+  const a = (await listRevs(blinky.id))[0];
+  await copyRev(a.id, 'B', null);
+  const r = await removeDemo();
+  assert.equal(r.keptParts, 12, 'the assembly and the 11 parts on its BOM lines');
+  assert.deepEqual((await listRevs(blinky.id)).map((x) => x.rev), ['A', 'B'], 'its revisions stay with it');
+  assert.equal((await bomLines(a.id)).filter((l) => !l.part_id).length, 0, 'no BOM line lost its part');
 });

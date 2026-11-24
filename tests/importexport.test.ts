@@ -7,11 +7,12 @@ import { useFreshLibrary } from './lib/backend.ts';
 import { MIGRATIONS_DIR } from './lib/db.ts';
 import { parseCsv, writeCsv } from '../src/lib/csv.ts';
 import { COLUMNS, FILE_ORDER, guessKind } from '../src/lib/csvFormat.ts';
-import { exportLibrary, templates } from '../src/lib/exporter.ts';
+import { exportLibrary, singleBomTemplate, templates } from '../src/lib/exporter.ts';
 import { importCsv, type ImportOptions } from '../src/lib/importer.ts';
 import { listLocations } from '../src/lib/locations.ts';
 import { getPart, listParts } from '../src/lib/parts.ts';
 import { listVendors } from '../src/lib/reference.ts';
+import { query } from '../src/lib/db.ts';
 
 const ADD: ImportOptions = { mode: 'add', stockMode: 'add' };
 const UPDATE: ImportOptions = { mode: 'update', stockMode: 'add' };
@@ -45,8 +46,8 @@ test('the templates import cleanly into an empty library', async () => {
   const r = await importCsv(templates(), ADD, true);
   assert.equal(r.errorCount, 0, JSON.stringify(r.files.flatMap((f) => f.errors)));
   assert.equal(r.committed, true);
-  assert.equal(count(db, 'part'), 1);
-  const p = (await getPart((await listParts())[0].id))!;
+  assert.equal(count(db, 'part'), 2);
+  const p = (await getPart((await listParts({ text: 'resistor' }))[0].id))!;
   assert.equal(p.location, 'Cabinet A > Drawer 1 > Bin 01');
   assert.equal(p.on_hand, 250);
   assert.deepEqual(p.mfrParts.map((m) => m.manufacturer).sort(), ['Vishay', 'Yageo']);
@@ -183,6 +184,60 @@ test('in add mode, sources.csv can still fill in what parts.csv created in the s
   assert.equal((await getPart(1))!.mfrParts[0].lifecycle, 'obsolete');
 });
 
+test('bom.csv: lines become a draft revision; unknown parts are kept unresolved, as a warning', async () => {
+  const db = useFreshLibrary();
+  await importCsv([csv('parts.csv', ['pn,description,kind,manufacturer,mpn', '00042,Board,assembly,,', '00001,Resistor,,Yageo,RC0805FR-0710KL'])], ADD, true);
+  const r = await importCsv([csv('my-board-bom.csv', [
+    'assembly_pn,rev,pn,mpn,qty,designators,dnp',
+    '00042,a,1,,,"R1, R2 R3",',          // a short number is tried as 00001; qty from the designators
+    '00042,A,,RC0805FR-0710KL,1,R4,yes',
+    '00042,A,99999,,2,"U1,U2",',
+  ])], ADD, true);
+  assert.equal(r.files[0].kind, 'bom');
+  assert.equal(r.committed, true, JSON.stringify(r.files[0].errors));
+  assert.equal(r.files[0].created, 3);
+  assert.deepEqual(r.files[0].warnings.map((w) => w.line), [4]);
+  assert.match(r.files[0].warnings[0].message, /No part 99999/);
+  const lines = db.prepare('SELECT line_no, part_id, pn_as_imported, qty, designators, dnp FROM bom_line ORDER BY line_no').all().map((x) => ({ ...x }));
+  assert.deepEqual(lines, [
+    { line_no: 1, part_id: 2, pn_as_imported: '1', qty: 3, designators: 'R1, R2, R3', dnp: 0 },
+    { line_no: 2, part_id: 2, pn_as_imported: null, qty: 1, designators: 'R4', dnp: 1 },
+    { line_no: 3, part_id: null, pn_as_imported: '99999', qty: 2, designators: 'U1, U2', dnp: 0 },
+  ]);
+  const rev = { ...db.prepare('SELECT rev, status, source_file FROM bom_rev').get() };
+  assert.deepEqual(rev, { rev: 'A', status: 'draft', source_file: 'my-board-bom.csv' });
+
+  const again = await importCsv([csv('bom.csv', ['assembly_pn,rev,pn,qty', '00042,A,00001,5'])], UPDATE, true);
+  assert.equal(again.files[0].unchanged, 1, 'an existing revision is never changed');
+  const bad = await importCsv([csv('bom.csv', ['assembly_pn,rev,pn,qty', '00777,A,00001,1', '00042,B,00001,', '00042,C,00001,1,'])], ADD, false);
+  assert.match(bad.files[0].errors[0].message, /No part 00777/);
+  assert.match(bad.files[0].errors[1].message, /Give a qty/);
+});
+
+test('a single BOM for one assembly: its own short format; library BOM files are refused', async () => {
+  const db = useFreshLibrary();
+  await importCsv([csv('parts.csv', ['pn,description,kind', '00042,Board,assembly', '00043,Other board,assembly', '00001,Resistor,'])], ADD, true);
+  const forBoard = { mode: 'add' as const, stockMode: 'add' as const, bomFor: { assemblyPn: '00042', rev: 'B' } };
+  const r = await importCsv([csv('altium export.csv', ['pn,qty,designators', '00001,2,"R1,R2"'])].map((f) => ({ ...f, kind: 'bom' as const })), forBoard, true);
+  assert.equal(r.committed, true, JSON.stringify(r.files[0]));
+  assert.deepEqual({ ...db.prepare('SELECT p.pn, r.rev FROM bom_rev r JOIN part p ON p.id = r.part_id').get() }, { pn: '00042', rev: 'B' });
+  const library = await importCsv([csv('bom.csv', ['assembly_pn,rev,pn,qty', '00043,A,00001,1'])], forBoard, false);
+  assert.match(library.files[0].problem!, /library BOM file .*Settings/);
+  const again = await importCsv([csv('b.csv', ['pn,qty', '00001,1'])].map((f) => ({ ...f, kind: 'bom' as const })), forBoard, false);
+  assert.match(again.files[0].errors[0].message, /already has a Rev B/);
+  const extra = await importCsv([csv('b.csv', ['pn,qty,status', '00001,1,released'])].map((f) => ({ ...f, kind: 'bom' as const })),
+    { ...forBoard, bomFor: { assemblyPn: '00042', rev: 'C' } }, false);
+  assert.deepEqual(extra.files[0].unknownColumns, ['status'], 'status belongs to the library format');
+  const dnp = await importCsv([csv('b.csv', ['pn,qty,designators,dnp', '99998,1,R9,yes', '99999,1,R8,'])].map((f) => ({ ...f, kind: 'bom' as const })),
+    { ...forBoard, bomFor: { assemblyPn: '00042', rev: 'E' } }, false);
+  assert.equal(dnp.warningCount, 1, 'an unresolved DNP line is not a warning');
+  assert.match(dnp.files[0].warnings[0].message, /99999/);
+  const t = await importCsv([{ ...singleBomTemplate(), kind: 'bom' as const }], { ...forBoard, bomFor: { assemblyPn: '00042', rev: 'D' } }, false);
+  assert.equal(t.errorCount, 0, JSON.stringify(t.files[0]));
+  const missing = await importCsv([csv('bom.csv', ['pn,qty', '00001,1'])], ADD, false);
+  assert.match(missing.files[0].problem!, /Missing columns: assembly_pn, rev/, 'without bomFor the columns are needed');
+});
+
 test('export, then import into an empty library, gives the same library', async () => {
   useFreshLibrary();
   const first = await importCsv(templates(), ADD, true);
@@ -198,7 +253,9 @@ test('export, then import into an empty library, gives the same library', async 
     stock: p!.stock.map((s) => [s.code, s.qty]),
     sources: p!.mfrParts.map((m) => [m.manufacturer, m.mpn, m.preferred,
       m.vendorParts.map((v) => [v.vendor, v.sku, v.currency ?? vendorCurrency.get(v.vendor_id), v.breaks])]),
-  }));
+  })).concat([{ bom: await query(`SELECT a.pn, r.rev, r.status, bl.line_no, p.pn AS part, bl.qty, bl.designators, bl.dnp, bl.note
+      FROM bom_line bl JOIN bom_rev r ON r.id = bl.bom_rev_id JOIN part a ON a.id = r.part_id LEFT JOIN part p ON p.id = bl.part_id
+      ORDER BY a.pn, r.rev, bl.line_no`) } as never]);
   };
   const before = await snapshot();
 

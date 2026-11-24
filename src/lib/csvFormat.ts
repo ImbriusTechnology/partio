@@ -4,13 +4,13 @@
 
 export const CSV_FORMAT_VERSION = 1;
 
-export type FileKind = 'locations' | 'parts' | 'stock' | 'sources';
+export type FileKind = 'locations' | 'parts' | 'stock' | 'sources' | 'bom';
 
 /** The order files are imported in: later files refer to things the earlier ones create. */
-export const FILE_ORDER: FileKind[] = ['locations', 'parts', 'stock', 'sources'];
+export const FILE_ORDER: FileKind[] = ['locations', 'parts', 'stock', 'sources', 'bom'];
 
 export const FILE_LABEL: Record<FileKind, string> = {
-  locations: 'Locations', parts: 'Parts', stock: 'Stock', sources: 'Sources',
+  locations: 'Locations', parts: 'Parts', stock: 'Stock', sources: 'Sources', bom: 'BOMs',
 };
 
 export interface Column { name: string; required?: boolean; help: string }
@@ -77,6 +77,21 @@ export const COLUMNS: Record<FileKind, { columns: Column[]; oneOf?: string[] }> 
       { name: 'price_breaks', help: 'Quantity:price pairs, e.g. 1:0.10; 100:0.021.' },
     ],
   },
+  bom: {
+    columns: [
+      { name: 'assembly_pn', required: true, help: 'PN of the assembly the BOM belongs to. It must already exist.' },
+      { name: 'rev', required: true, help: 'BOM revision, e.g. A. A revision that already exists is left as it is.' },
+      { name: 'status', help: 'draft (default), released or obsolete.' },
+      { name: 'project', help: 'Your project reference, if any.' },
+      { name: 'line', help: 'Line number. Blank: the next one.' },
+      { name: 'pn', help: 'The part used, by PN.' },
+      { name: 'mpn', help: 'Or by MPN. A line whose part isn’t found is kept, unresolved, to match up later.' },
+      { name: 'qty', help: 'Quantity per assembly. Blank: the number of designators.' },
+      { name: 'designators', help: 'Reference designators, e.g. R1, R3, R9.' },
+      { name: 'dnp', help: 'yes if not fitted.' },
+      { name: 'note', help: 'Free text.' },
+    ],
+  },
 };
 
 export const columnNames = (kind: FileKind) => COLUMNS[kind].columns.map((c) => c.name);
@@ -91,6 +106,7 @@ export const EXAMPLES: Record<FileKind, string[][]> = {
   parts: [
     ['', '', 'Resistor 10k 1% 0805', 'Passive > Resistor', 'component', '10k', '1', '0805', 'each', 'L0101', '', '', 'active', '',
       'Yageo', 'AC0805FR-0710KL', '', 'DigiKey', '311-10.0KCRCT-ND'],
+    ['00100', 'Example board', 'Example board, assembled', '', 'assembly', '', '', '', 'each', '', '', '', 'active', '', '', '', '', '', ''],
   ],
   stock: [
     ['', 'AC0805FR-0710KL', 'L0101', '250', '0.012', '', 'Opening count'],
@@ -98,16 +114,35 @@ export const EXAMPLES: Record<FileKind, string[][]> = {
   sources: [
     ['00001', 'Vishay', 'CRCW080510K0FKEA', '', 'active', 'no', 'Mouser', '71-CRCW080510K0FKEA', '', 'Cut tape', '1', '', '', '1:0.10; 100:0.021'],
   ],
+  bom: [
+    ['00100', 'A', 'draft', '', '1', '', 'AC0805FR-0710KL', '', 'R1, R2, R3', '', ''],
+    ['00100', 'A', 'draft', '', '2', '', 'AC0805FR-0710KL', '1', 'R4', 'yes', 'Fit only for the 5 V version'],
+  ],
 };
+
+/**
+ * The single-BOM file for Assemblies → Import BOM…: one assembly and revision per file, so no assembly_pn,
+ * rev, status or project columns. The assembly is the one on screen and the revision is chosen in the dialog.
+ */
+export const SINGLE_BOM_COLUMNS = ['line', 'pn', 'mpn', 'qty', 'designators', 'dnp', 'note'];
+/** Columns that mark a library bom.csv, which belongs in Settings → Import CSV files… instead. */
+export const LIBRARY_BOM_ONLY = ['assembly_pn', 'rev', 'status', 'project'];
+
+export const SINGLE_BOM_EXAMPLE: string[][] = [
+  ['1', '', 'AC0805FR-0710KL', '', 'R1, R2, R3', '', ''],
+  ['2', '', 'AC0805FR-0710KL', '1', 'R4', 'yes', 'Fit only for the 5 V version'],
+];
 
 /** Guess what a file holds from its name, then from its columns. */
 export function guessKind(fileName: string, headers: string[]): FileKind | null {
   const n = fileName.toLowerCase();
+  if (/\bbom|bom\b|bill.?of.?materials/.test(n)) return 'bom';
   if (n.includes('location')) return 'locations';
   if (n.includes('stock')) return 'stock';
   if (n.includes('source')) return 'sources';
   if (n.includes('part')) return 'parts';
   const h = new Set(headers.map((x) => x.trim().toLowerCase()));
+  if (h.has('assembly_pn')) return 'bom';
   if (h.has('path')) return 'locations';
   if (h.has('qty')) return 'stock';
   if (h.has('price_breaks') || (h.has('sku') && !h.has('description'))) return 'sources';
