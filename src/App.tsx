@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { IconAssemblies, IconCart, IconLocations, IconParts, IconSearch, IconSettings } from './components/icons.tsx';
 import { AssembliesView } from './components/AssembliesView.tsx';
+import { PurchasingView } from './components/PurchasingView.tsx';
 import { FirstRun } from './components/FirstRun.tsx';
 import { LocationsView } from './components/LocationsView.tsx';
 import { PartEditor } from './components/PartEditor.tsx';
@@ -112,7 +113,7 @@ function Shell() {
         </Pane>
         <Pane on={view === 'locations'}><LocationsView onOpenPart={openPart} focus={locFocus} refreshKey={refreshKey} onChanged={changed} /></Pane>
         <Pane on={view === 'assemblies'}><AssembliesView onOpenPart={openPart} focus={asmFocus} refreshKey={refreshKey} onChanged={changed} /></Pane>
-        <Pane on={view === 'purchasing'}><ComingSoon what="The shopping list and vendor lookups" when="phase 5" /></Pane>
+        <Pane on={view === 'purchasing'}><PurchasingView onOpenPart={openPart} refreshKey={refreshKey} onChanged={changed} /></Pane>
         <Pane on={view === 'settings'}><SettingsView refreshKey={refreshKey} onChanged={changed} /></Pane>
       </main>
       {quick && <QuickFind onClose={() => setQuick(false)} onOpenPart={openPart} onNewPart={(text) => setNewPart({ text })} />}
@@ -127,8 +128,4 @@ function Shell() {
 /** A view that stays laid out while hidden, so its scroll positions survive switching. */
 function Pane({ on, children }: { on: boolean; children: ReactNode }) {
   return <div className={`view-pane ${on ? '' : 'off'}`} inert={!on}>{children}</div>;
-}
-
-function ComingSoon({ what, when }: { what: string; when: string }) {
-  return <div className="coming-soon"><p className="muted">{what} arrive in {when}.</p></div>;
 }

@@ -10,6 +10,8 @@ import { getSetting, listVendors } from '../lib/reference.ts';
 import { countStock, locationNotes, moveStock, receiveLocationFor, receiveStock, removeStock } from '../lib/stock.ts';
 import { formatValue } from '../lib/values.ts';
 import { listBuilds } from '../lib/builds.ts';
+import { onOrder } from '../lib/purchasing.ts';
+import { ItemDialog } from './PurchasingView.tsx';
 import { BUILD_STATUS_LABEL, BuildView, buildSummary } from './BuildView.tsx';
 import { IconCopy } from './icons.tsx';
 import { PartEditor } from './PartEditor.tsx';
@@ -17,7 +19,7 @@ import { LocationPicker } from './LocationPicker.tsx';
 import { Combo, ConfirmButton, Field, Modal, Select, copyText, fmtMoney, fmtQty, num, useAction, useLoad, useToast } from './ui.tsx';
 
 type StockMode = 'receive' | 'move' | 'count' | 'remove';
-type Dialog = { kind: 'edit' } | { kind: 'similar' } | { kind: 'merge' } | { kind: 'stock'; mode: StockMode; locationId?: number } | { kind: 'build'; id: number };
+type Dialog = { kind: 'edit' } | { kind: 'similar' } | { kind: 'merge' } | { kind: 'stock'; mode: StockMode; locationId?: number } | { kind: 'build'; id: number } | { kind: 'buy' };
 
 /** Ledger kinds as they read in the stock history. */
 const TXN_LABEL: Record<string, string> = {
@@ -32,6 +34,7 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
   const blocker = useLoad(() => deleteBlocker(id), [id, refreshKey]);
   const base = useLoad(async () => (await getSetting('base_currency')) ?? 'USD', []);
   const builds = useLoad(() => listBuilds({ assemblyId: id }), [id, refreshKey]);
+  const coming = useLoad(async () => (await onOrder([id])).get(id) ?? null, [id, refreshKey]);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const toast = useToast();
   const act = useAction();
@@ -92,9 +95,15 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
 
       <section className="card">
         <div className="section-head">
-          <h3>Stock <span className="muted">{fmtQty(p.on_hand)}{p.unit !== 'each' ? ` ${p.unit}` : ''}</span></h3>
+          <h3>Stock <span className="muted">{fmtQty(p.on_hand)}{p.unit !== 'each' ? ` ${p.unit}` : ''}</span>
+            {coming.data && (coming.data.ordered > 0 || coming.data.open > 0) && (
+              <span className="muted small" style={{ fontWeight: 400, marginLeft: 8 }}>
+                {[coming.data.ordered > 0 && `${fmtQty(coming.data.ordered)} on order`, coming.data.open > 0 && `${fmtQty(coming.data.open)} to buy`].filter(Boolean).join(' · ')}
+              </span>
+            )}</h3>
           {!merged && (
             <div className="actions">
+              {p.status !== 'archived' && <button onClick={() => setDialog({ kind: 'buy' })}>Add to shopping list</button>}
               <button onClick={() => setDialog({ kind: 'stock', mode: 'receive' })}>Receive</button>
               <button onClick={() => setDialog({ kind: 'stock', mode: 'move' })} disabled={!p.stock.length}>Move</button>
             </div>
@@ -239,6 +248,7 @@ export function PartDetail({ id, refreshKey, onChanged, onOpenPart, onOpenLocati
         <PartEditor template={p} onClose={() => setDialog(null)} onSaved={(newId) => { setDialog(null); onChanged(); onOpenPart(newId); }} />
       )}
       {dialog?.kind === 'merge' && <MergeDialog part={p} onClose={() => setDialog(null)} onDone={changed} />}
+      {dialog?.kind === 'buy' && <ItemDialog partId={p.id} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); reload(); onChanged(); }} />}
       {dialog?.kind === 'build' && (
         <BuildView key={dialog.id} buildId={dialog.id} onClose={() => setDialog(null)} onChanged={() => { reload(); onChanged(); }}
           onOpenPart={(pid) => { setDialog(null); onOpenPart(pid); }} onOpenBuild={(bid) => setDialog({ kind: 'build', id: bid })} />

@@ -419,6 +419,9 @@ html:not(.platform-mac) .titlebar-space { display: none; }   /* Windows and Linu
 .head-actions { flex-wrap: wrap; justify-content: flex-end; flex: 0 1 auto; }
 .shop-grid col:first-child { width: 34px !important; }
 .shop-grid td:first-child { text-overflow: clip; }
+.shop-grid td .small.ok { white-space: normal; }
+.sub-head { margin: 16px 0 6px; font-size: 13px; }
+.sources-choice td { vertical-align: middle; }
 /* The ★ on a vendor part: the one bought from by default */
 button.star { background: none; border: none; padding: 0 4px 0 0; min-height: 0; font-size: 14px; line-height: 1; color: var(--muted); cursor: pointer; box-shadow: none; }
 button.star.on { color: #e0a100; }

@@ -9,6 +9,7 @@ import {
 import { writeCsv } from '../lib/csv.ts';
 import { saveFile } from '../lib/db.ts';
 import { listLocations } from '../lib/locations.ts';
+import { addBuildShortages, onOrder } from '../lib/purchasing.ts';
 import { getSetting } from '../lib/reference.ts';
 import { LocationPicker } from './LocationPicker.tsx';
 import { ConfirmButton, Field, Modal, Select, copyText, fmtMoney, fmtQty, num, useAction, useLoad, useToast } from './ui.tsx';
@@ -99,6 +100,7 @@ export function BuildView({ buildId, onClose, onChanged, onOpenPart, onOpenBuild
   const changed = useLoad(() => (b && open ? bomChanged(b.id) : Promise.resolve(false)), [b?.id, open, tick]);
   const usage = useLoad(() => (b && b.status === 'complete' ? buildUsage(b.id) : Promise.resolve([])), [b?.id, b?.status, tick]);
   const base = useLoad(async () => (await getSetting('base_currency')) ?? 'USD', []);
+  const coming = useLoad(() => onOrder([...new Set((reqs.data ?? []).filter((r) => r.part_id && r.short > 0).map((r) => r.part_id!))]), [reqs.data]);
   const [qtyText, setQtyText] = useState('');
   const [notes, setNotes] = useState('');
   const [taken, setTaken] = useState<Map<string, string>>(new Map());   // edited pick quantities
@@ -198,7 +200,20 @@ export function BuildView({ buildId, onClose, onChanged, onOpenPart, onOpenBuild
 
           {attention.length > 0 && (
             <div className="card attention">
-              <h3>Needs attention</h3>
+              <div className="section-head">
+                <h3>Needs attention</h3>
+                <span className="spacer" />
+                {short.some((r) => !r.has_bom) && (
+                  <button title="Adds what’s short, less anything already on the shopping list or on order, rounded up to each vendor’s minimum and multiple"
+                    onClick={() => void act(async () => {
+                      const res = await addBuildShortages(b.id);
+                      refresh();
+                      toast(res.added.length
+                        ? `${res.added.length} part${res.added.length === 1 ? '' : 's'} added to the shopping list${res.covered.length ? `; ${res.covered.length} already coming` : ''}`
+                        : 'Everything short is already on the shopping list or on order');
+                    })}>Add shortages to shopping list</button>
+                )}
+              </div>
               <table className="grid compact">
                 <thead><tr><th style={{ width: 40 }}>Line</th><th style={{ width: 64 }}>PN</th><th>Part</th><th>Designators</th>
                   <th className="num">Need</th><th className="num">On hand</th><th className="num" title="Needed by builds planned before this one">Earlier builds</th><th className="num">Short</th><th /></tr></thead>
@@ -214,7 +229,13 @@ export function BuildView({ buildId, onClose, onChanged, onOpenPart, onOpenBuild
                       <td className="num">{fmtQty(r.need)}</td>
                       <td className="num">{fmtQty(r.on_hand)}</td>
                       <td className="num muted">{r.reserved ? fmtQty(r.reserved) : ''}</td>
-                      <td className="num warn">{r.part_id ? fmtQty(Math.max(r.short, r.need - (takenByLine.get(r.line_no) ?? 0))) : 'no part'}</td>
+                      <td className="num warn">{r.part_id ? fmtQty(Math.max(r.short, r.need - (takenByLine.get(r.line_no) ?? 0))) : 'no part'}
+                        {r.part_id && coming.data?.get(r.part_id) && (
+                          <div className="small muted">{[
+                            coming.data.get(r.part_id)!.ordered > 0 && `${fmtQty(coming.data.get(r.part_id)!.ordered)} on order`,
+                            coming.data.get(r.part_id)!.open > 0 && `${fmtQty(coming.data.get(r.part_id)!.open)} to buy`,
+                          ].filter(Boolean).join(' · ')}</div>
+                        )}</td>
                       <td className="row-actions">
                         {r.part_id && r.has_bom && onPlanSubBuild && <button onClick={() => onPlanSubBuild(r.part_id!, Math.ceil(r.short || r.need))}>Plan a build of it</button>}
                         {r.substitute && <button className="link" onClick={() => void substitute(r.line_no, null)}>Use {r.bom_pn ?? 'BOM part'}</button>}
