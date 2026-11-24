@@ -7,7 +7,7 @@ import {
   type BuildRow, type Requirement,
 } from '../lib/builds.ts';
 import { writeCsv } from '../lib/csv.ts';
-import { revealInFileManager, saveFilesToFolder } from '../lib/db.ts';
+import { saveFile } from '../lib/db.ts';
 import { listLocations } from '../lib/locations.ts';
 import { getSetting } from '../lib/reference.ts';
 import { LocationPicker } from './LocationPicker.tsx';
@@ -142,10 +142,9 @@ export function BuildView({ buildId, onClose, onChanged, onOpenPart, onOpenBuild
     if (!b) return;
     const text = writeCsv(['location', 'pn', 'name', 'description', 'designators', 'take', 'line'],
       pickListRows().map((r) => [r.path, r.req.pn, r.req.name, r.req.description, r.req.designators, takeOf(r), r.req.line_no]));
-    const where = await saveFilesToFolder('Choose where to save the pick list', `partio-pick-list-${b.code}`, [{ name: `pick-list-${b.code}.csv`, text }]);
+    const where = await saveFile('Save the pick list', { name: `Pick list ${b.code} ${b.assembly_pn} Rev ${b.rev}.csv`.replace(/[/\\:]/g, '-'), text });
     if (!where) return;
-    toast(`Saved to ${where}`);
-    await revealInFileManager(where).catch(() => undefined);
+    toast(`Saved ${where}`);
   });
 
   if (!b) return null;
@@ -195,7 +194,6 @@ export function BuildView({ buildId, onClose, onChanged, onOpenPart, onOpenBuild
             <span className="muted small">{pickListRows().length} picks · {fmtQty(units)} parts</span>
             <button onClick={() => void copyText(pickText()).then(() => toast('Pick list copied (paste into a spreadsheet)'))}>Copy</button>
             <button onClick={() => void saveCsv()}>Save CSV…</button>
-            <button onClick={() => window.print()}>Print pick list</button>
           </div>
 
           {attention.length > 0 && (

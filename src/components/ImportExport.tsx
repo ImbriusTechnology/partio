@@ -1,7 +1,7 @@
 // Settings → Import and export: CSV templates, exporting the library, and importing with a preview.
 import { useRef, useState } from 'react';
 import { FILE_LABEL, FILE_ORDER, type FileKind } from '../lib/csvFormat.ts';
-import { backupLibrary, revealInFileManager, saveFilesToFolder } from '../lib/db.ts';
+import { backupLibrary, saveFile, saveFilesToFolder } from '../lib/db.ts';
 import { exportLibrary, singleBomTemplate, templates } from '../lib/exporter.ts';
 import { describeFile, importCsv, type ImportFile, type ImportOptions, type ImportReport } from '../lib/importer.ts';
 import { Field, Modal, Select, useAction, useToast } from './ui.tsx';
@@ -17,7 +17,6 @@ export function ImportExportSection({ onChanged }: { onChanged: () => void }) {
     const where = await saveFilesToFolder(title, folder, await files());
     if (!where) return;
     toast(`Saved to ${where}`);
-    await revealInFileManager(where).catch(() => undefined);
   });
 
   return (
@@ -98,10 +97,9 @@ export function ImportDialog({ onClose, onDone, title, hint, bomFor }: {
           <div className="row">
             <button onClick={() => input.current?.click()} disabled={busy}>{onlyBom ? 'Choose BOM file…' : 'Choose files…'}</button>
             {onlyBom && <button onClick={() => void act(async () => {
-              const where = await saveFilesToFolder('Choose where to save the BOM template', 'partio-bom-template', [singleBomTemplate()]);
+              const where = await saveFile('Save the BOM template', singleBomTemplate());
               if (!where) return;
-              toast(`Saved to ${where}`);
-              await revealInFileManager(where).catch(() => undefined);
+              toast(`Saved ${where}`);
             })}>Download template…</button>}
             <span className="muted small">{onlyBom
               ? 'One BOM per file: line, pn and/or mpn, qty, designators, dnp, note'

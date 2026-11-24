@@ -1,4 +1,4 @@
-//! Saving files the app makes (CSV exports and templates), through the system's own folder chooser.
+//! Saving files the app makes (CSV exports, templates, pick lists), through the system's own save and folder dialogs.
 //! rfd uses the native dialog on macOS, Windows and Linux.
 
 use serde::Deserialize;
@@ -37,4 +37,23 @@ pub async fn save_files_to_folder(title: String, subfolder: String, files: Vec<O
         fs::write(&path, f.text.as_bytes()).map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
     }
     Ok(Some(target.display().to_string()))
+}
+
+/// Ask where to save one file (a Save dialog, starting in `directory` if given), and write it.
+/// Returns the path written, or None when the person cancels.
+#[tauri::command]
+pub async fn save_file(title: String, name: String, text: String, directory: Option<String>) -> Result<Option<String>, String> {
+    let mut dialog = rfd::AsyncFileDialog::new().set_title(&title).set_file_name(&name);
+    if name.to_lowercase().ends_with(".csv") {
+        dialog = dialog.add_filter("CSV file", &["csv"]);
+    }
+    if let Some(dir) = directory.filter(|d| PathBuf::from(d).is_dir()) {
+        dialog = dialog.set_directory(dir);
+    }
+    let Some(handle) = dialog.save_file().await else {
+        return Ok(None);
+    };
+    let path = handle.path().to_path_buf();
+    fs::write(&path, text.as_bytes()).map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+    Ok(Some(path.display().to_string()))
 }

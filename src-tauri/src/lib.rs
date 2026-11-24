@@ -28,6 +28,7 @@ pub fn run() {
             db::library_info,
             db::backup_library,
             files::save_files_to_folder,
+            files::save_file,
             secrets::secret_set,
             secrets::secret_has
         ])

@@ -100,6 +100,21 @@ export async function libraryInfo(): Promise<LibraryInfo> {
  * Ask for a folder and write these files into a new folder inside it named `subfolder`.
  * Resolves to the folder written to, or null if the person cancelled.
  */
+/**
+ * Save one file with the system's Save dialog, starting in the folder last saved to.
+ * Resolves to the path written, or null if the person cancelled.
+ */
+export async function saveFile(title: string, file: { name: string; text: string }): Promise<string | null> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const last = (await queryOne<{ value: string }>("SELECT value FROM setting WHERE key = 'last_save_dir'"))?.value ?? null;
+  const path = await invoke<string | null>('save_file', { title, name: file.name, text: file.text, directory: last });
+  if (path) {
+    const dir = path.replace(/[\\/][^\\/]*$/, '');
+    await execute("INSERT INTO setting (key, value) VALUES ('last_save_dir', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", [dir]);
+  }
+  return path;
+}
+
 export async function saveFilesToFolder(title: string, subfolder: string, files: Array<{ name: string; text: string }>): Promise<string | null> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<string | null>('save_files_to_folder', { title, subfolder, files });
