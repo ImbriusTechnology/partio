@@ -419,7 +419,8 @@ export async function deleteBlocker(id: number): Promise<string | null> {
            (SELECT COALESCE(SUM(qty), 0) FROM stock WHERE part_id = ?1) AS on_hand,
            (SELECT COUNT(*) FROM bom_line WHERE part_id = ?1) AS bom,
            (SELECT COUNT(*) FROM bom_rev WHERE part_id = ?1) AS asm,
-           (SELECT COUNT(*) FROM build_line WHERE part_id = ?1 OR bom_part_id = ?1) AS builds,
+           (SELECT COUNT(*) FROM build_line WHERE part_id = ?1 OR bom_part_id = ?1)
+             + (SELECT COUNT(*) FROM build_req WHERE part_id = ?1 OR use_part_id = ?1) AS builds,
            (SELECT COUNT(*) FROM shopping_item WHERE part_id = ?1) AS shop,
            (SELECT COUNT(*) FROM part WHERE merged_into_id = ?1) AS merged`, [id]);
   if (!r) return 'not found';
@@ -502,6 +503,9 @@ export async function mergeParts(keepId: number, duplicateId: number): Promise<v
   }
   stmts.push(
     { sql: 'UPDATE bom_line SET part_id = ? WHERE part_id = ?', params: [keepId, duplicateId] },
+    { sql: 'UPDATE build_req SET part_id = ? WHERE part_id = ?', params: [keepId, duplicateId] },
+    { sql: 'UPDATE build_req SET use_part_id = ? WHERE use_part_id = ?', params: [keepId, duplicateId] },
+    { sql: 'UPDATE build_req SET use_part_id = NULL WHERE use_part_id = part_id', params: [] },
     { sql: "UPDATE shopping_item SET part_id = ? WHERE part_id = ? AND status = 'open'", params: [keepId, duplicateId] },
     { sql: 'UPDATE document_link SET part_id = ? WHERE part_id = ?', params: [keepId, duplicateId] },
     { sql: `UPDATE part SET default_location_id = COALESCE(default_location_id, (SELECT default_location_id FROM part WHERE id = ?)),

@@ -1,5 +1,5 @@
 // Assemblies and their BOM revisions: listing, editing lines, and revision status.
-// BOMs are imported as bom.csv through the CSV importer (importer.ts), like everything else.
+// BOMs are imported through the CSV importer (importer.ts), like everything else. Builds are in builds.ts.
 import { execute, query, queryOne, ref, transaction, type Statement } from './db.ts';
 import { resolveCode } from './parts.ts';
 
@@ -7,6 +7,7 @@ export type RevStatus = 'draft' | 'released' | 'obsolete';
 
 export interface AssemblyRow {
   id: number; pn: string; name: string | null; description: string; kind: string; project_code: string | null; revs: string | null; on_hand: number;
+  open_builds: number;
 }
 export interface RevRow { id: number; rev: string; status: RevStatus; project_code: string | null; notes: string | null; source_file: string | null; created_at: string }
 export interface BomLineRow {
@@ -21,7 +22,8 @@ export const listAssemblies = () => query<AssemblyRow>(`
   SELECT p.id, p.pn, p.name, p.description, p.kind,
          (SELECT project_code FROM bom_rev r WHERE r.part_id = p.id AND project_code IS NOT NULL ORDER BY length(rev) DESC, rev DESC LIMIT 1) AS project_code,
          (SELECT group_concat(rev, ', ') FROM (SELECT rev FROM bom_rev r WHERE r.part_id = p.id ORDER BY length(rev), rev)) AS revs,
-         COALESCE((SELECT SUM(qty) FROM stock s WHERE s.part_id = p.id), 0) AS on_hand
+         COALESCE((SELECT SUM(qty) FROM stock s WHERE s.part_id = p.id), 0) AS on_hand,
+         (SELECT COUNT(*) FROM build b JOIN bom_rev r ON r.id = b.bom_rev_id WHERE r.part_id = p.id AND b.status = 'planned') AS open_builds
   FROM part p
   WHERE (EXISTS (SELECT 1 FROM bom_rev r WHERE r.part_id = p.id) OR p.kind = 'assembly') AND p.status <> 'archived'
   ORDER BY p.pn`);
@@ -125,7 +127,7 @@ export async function deleteRev(revId: number): Promise<void> {
 
 // ------------------------------------------------------------------ lines
 
-/** Draft and released revisions can be edited (planned builds follow; completed builds keep their own record). Obsolete ones can't. */
+/** Draft and released revisions can be edited (builds keep their own copy of the lines, and show that the BOM changed). Obsolete ones can't. */
 async function assertEditable(revId: number): Promise<void> {
   const r = await queryOne<{ status: string; rev: string }>('SELECT status, rev FROM bom_rev WHERE id = ?', [revId]);
   if (!r) throw new Error('Revision not found');

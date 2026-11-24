@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager, State};
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
     ("002_packages.sql", include_str!("../../migrations/002_packages.sql")),
+    ("003_builds.sql", include_str!("../../migrations/003_builds.sql")),
 ];
 
 /// How many automatic backups to keep.

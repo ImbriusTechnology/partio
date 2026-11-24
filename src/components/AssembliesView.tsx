@@ -1,11 +1,13 @@
-// Assemblies: each assembly's BOM revisions, their lines, and a stock check for a build quantity.
-// BOMs come in as bom.csv (Import BOM…) or are typed in line by line. Builds arrive in the next step.
+// Assemblies: each assembly's BOM revisions and their lines, a stock check for a build quantity, and its builds.
+// BOMs come in from a CSV file (Import BOM…) or are typed in line by line. Builds are in BuildView.tsx.
 import { useEffect, useState } from 'react';
 import {
   addLine, bomLines, copyRev, createRev, deleteLine, deleteRev, findPartForLine, listAssemblies, listRevs, moveDesignators, nextRev,
   setLinePart, setRevStatus, splitDesignators, updateLine, updateRevInfo, type BomLineRow, type LineFields, type RevRow,
 } from '../lib/bom.ts';
+import { listBuilds } from '../lib/builds.ts';
 import { getPart } from '../lib/parts.ts';
+import { BUILD_STATUS_LABEL, BuildView, PlanBuildDialog, buildSummary } from './BuildView.tsx';
 import { IconPlus } from './icons.tsx';
 import { ImportDialog } from './ImportExport.tsx';
 import { PartEditor } from './PartEditor.tsx';
@@ -18,7 +20,14 @@ export function AssembliesView({ onOpenPart, focus, refreshKey, onChanged }: {
   const [selected, setSelected] = useState<number | null>(null);
   const [filter, setFilter] = useState('');
   const [creating, setCreating] = useState(false);
+  const [openBuild, setOpenBuild] = useState<number | null>(null);
+  const [planning, setPlanning] = useState<{ assemblyId: number; revId?: number | null; qty: number; title: string } | null>(null);
+  const openBuilds = useLoad(() => listBuilds({ open: true }), [refreshKey]);
   useEffect(() => { if (focus) setSelected(focus.id); }, [focus]);
+  const plan = (assemblyId: number, qty: number, revId?: number | null) => void listAssemblies().then((all) => {
+    const a = all.find((x) => x.id === assemblyId);
+    setPlanning({ assemblyId, revId, qty, title: `Plan a build of ${a ? `${a.pn}${a.name ? ` ${a.name}` : ''}` : 'this assembly'}` });
+  });
   const shown = (list.data ?? []).filter((a) => !filter || `${a.pn} ${a.name ?? ''} ${a.description} ${a.project_code ?? ''}`.toLowerCase().includes(filter.toLowerCase()));
 
   return (
@@ -28,11 +37,23 @@ export function AssembliesView({ onOpenPart, focus, refreshKey, onChanged }: {
           <SearchInput className="search" placeholder="Filter assemblies" value={filter} onChange={setFilter} />
           <button onClick={() => setCreating(true)} title="New assembly"><IconPlus /></button>
         </div>
+        {(openBuilds.data?.length ?? 0) > 0 && !filter && (
+          <>
+            <div className="list-heading">Planned builds</div>
+            {openBuilds.data!.map((b) => (
+              <div key={b.id} className="list-item" onClick={() => setOpenBuild(b.id)}>
+                <div><span className="mono">{b.code}</span> <span className="pn">{b.assembly_pn}</span> {b.assembly_name && <b>{b.assembly_name}</b>}</div>
+                <div className="muted small">{buildSummary(b)}{b.notes ? ` · ${b.notes}` : ''}</div>
+              </div>
+            ))}
+            <div className="list-heading">Assemblies</div>
+          </>
+        )}
         {shown.map((a) => (
           <div key={a.id} className={`list-item ${selected === a.id ? 'sel' : ''}`} onClick={() => setSelected(a.id)}>
             <div><span className="pn">{a.pn}</span> {a.name && <b>{a.name}</b>} <span className="muted small">{a.project_code ?? ''}</span></div>
             <div className="small clip-line">{a.description}</div>
-            <div className="muted small">{a.revs ? `Rev ${a.revs}` : 'No BOM yet'} · {fmtQty(a.on_hand)} in stock</div>
+            <div className="muted small">{a.revs ? `Rev ${a.revs}` : 'No BOM yet'} · {fmtQty(a.on_hand)} in stock{a.open_builds ? ` · ${a.open_builds} planned` : ''}</div>
           </div>
         ))}
         {list.data && !list.data.length && (
@@ -41,7 +62,8 @@ export function AssembliesView({ onOpenPart, focus, refreshKey, onChanged }: {
       </aside>
       <section className="main-pane">
         {selected
-          ? <AssemblyPanel id={selected} refreshKey={refreshKey} onChanged={onChanged} onOpenPart={onOpenPart} />
+          ? <AssemblyPanel id={selected} refreshKey={refreshKey} onChanged={onChanged} onOpenPart={onOpenPart}
+              onOpenBuild={setOpenBuild} onPlan={(qty, revId) => plan(selected, qty, revId)} />
           : <div className="empty">
               <p>Choose an assembly, or add one.</p>
               <button className="primary" onClick={() => setCreating(true)}><IconPlus /> New assembly</button>
@@ -51,16 +73,27 @@ export function AssembliesView({ onOpenPart, focus, refreshKey, onChanged }: {
         <PartEditor preset={{ kind: 'assembly' }} onClose={() => setCreating(false)}
           onSaved={(id) => { setCreating(false); onChanged(); setSelected(id); }} />
       )}
+      {planning && (
+        <PlanBuildDialog assemblyId={planning.assemblyId} title={planning.title} defaultRevId={planning.revId} defaultQty={planning.qty}
+          onClose={() => setPlanning(null)} onPlanned={(id) => { setPlanning(null); onChanged(); setOpenBuild(id); }} />
+      )}
+      {openBuild && !planning && (
+        <BuildView key={openBuild} buildId={openBuild} onClose={() => setOpenBuild(null)} onChanged={onChanged}
+          onOpenPart={(id) => { setOpenBuild(null); onOpenPart(id); }} onOpenBuild={setOpenBuild}
+          onPlanSubBuild={(assemblyId, qty) => plan(assemblyId, qty)} />
+      )}
     </div>
   );
 }
 
-function AssemblyPanel({ id, refreshKey, onChanged, onOpenPart }: {
+function AssemblyPanel({ id, refreshKey, onChanged, onOpenPart, onOpenBuild, onPlan }: {
   id: number; refreshKey: number; onChanged: () => void; onOpenPart: (id: number) => void;
+  onOpenBuild: (id: number) => void; onPlan: (qty: number, revId: number | null) => void;
 }) {
   const act = useAction();
   const info = useLoad(async () => (await listAssemblies()).find((a) => a.id === id) ?? (await getPart(id)), [id, refreshKey]);
   const revs = useLoad(() => listRevs(id), [id, refreshKey]);
+  const builds = useLoad(() => listBuilds({ assemblyId: id }), [id, refreshKey]);
   const [revId, setRevId] = useState<number | null>(null);
   const [buildQty, setBuildQty] = useState('1');
   const [importing, setImporting] = useState<string | null>(null);   // the revision to import as
@@ -138,6 +171,9 @@ function AssemblyPanel({ id, refreshKey, onChanged, onOpenPart }: {
             <span className="spacer" />
             <label className="inline">Check stock for <input className="qty-input" value={buildQty} onChange={(e) => setBuildQty(e.target.value)} inputMode="numeric" /></label>
             <span className={short.length ? 'warn' : 'ok'}>{short.length ? `${short.length} line${short.length === 1 ? '' : 's'} short` : 'All in stock'}</span>
+            <button className="primary" disabled={!rev || rev.status === 'obsolete' || !(n > 0)}
+              title={rev?.status === 'obsolete' ? 'An obsolete revision can’t be built' : undefined}
+              onClick={() => onPlan(Math.max(1, Math.round(n)), rev?.id ?? null)}>Plan build…</button>
           </div>
           {rev?.notes && <p className="muted small pad">{rev.notes}</p>}
           {rev?.status === 'released' && <p className="muted small pad">Released. Edits apply to this revision straight away; to keep it as it is, copy it to a new revision first.</p>}
@@ -169,6 +205,25 @@ function AssemblyPanel({ id, refreshKey, onChanged, onOpenPart }: {
             </table>
           </div>
         </>
+      )}
+
+      {(builds.data?.length ?? 0) > 0 && (
+        <section className="card">
+          <h3>Builds</h3>
+          <table className="grid compact">
+            <tbody>
+              {builds.data!.map((b) => (
+                <tr key={b.id} className="clickable" onClick={() => onOpenBuild(b.id)}>
+                  <td className="mono" style={{ width: 64 }}>{b.code}</td>
+                  <td>{buildSummary(b)}{b.status === 'complete' && b.bom_status === 'draft' && <span className="badge obsolete" style={{ marginLeft: 6 }}>draft BOM</span>}</td>
+                  <td className="muted small">{b.notes}</td>
+                  <td className="muted small">{(b.completed_at ?? b.created_at ?? '').slice(0, 10)}</td>
+                  <td style={{ width: 90 }}><span className={`status-pill ${b.status}`}>{BUILD_STATUS_LABEL[b.status]}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
 
       {importing && (

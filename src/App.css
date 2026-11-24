@@ -359,6 +359,8 @@ html:not(.platform-mac) .titlebar-space { display: none; }   /* Windows and Linu
 .build-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .build-title { font-size: 15px; }
 .build-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.build-controls .inline.grow { flex: 1; }
+.build-controls .inline.grow input { flex: 1; min-width: 160px; }
 .card.attention { border-color: var(--warn); background: var(--warn-soft); }
 .card.attention .grid td { border-bottom-color: rgba(127, 127, 127, 0.15); }
 .pick-table tr.done td { opacity: 0.45; text-decoration: line-through; }
@@ -370,6 +372,7 @@ html:not(.platform-mac) .titlebar-space { display: none; }   /* Windows and Linu
   body { overflow: visible; background: #fff; color: #000; }
   body * { visibility: hidden; }
   .print-area, .print-area * { visibility: visible; }
+  .modal-backdrop, .modal, .modal-body { position: static; overflow: visible; max-height: none; height: auto; transform: none; box-shadow: none; }
   .print-area { position: absolute; left: 0; top: 0; width: 100%; color: #000; }
   .print-only { display: block; font-size: 14px; margin-bottom: 8px; }
   .print-area input[type='checkbox'] { visibility: visible; }

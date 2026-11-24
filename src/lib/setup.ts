@@ -158,6 +158,7 @@ export async function removeDemo(): Promise<{ removedParts: number; keptParts: n
        OR EXISTS (SELECT 1 FROM bom_rev r WHERE r.part_id = p.id AND COALESCE(r.source_file, '') NOT LIKE 'demo:%')
        OR EXISTS (SELECT 1 FROM build b JOIN bom_rev r ON r.id = b.bom_rev_id WHERE r.part_id = p.id)
        OR EXISTS (SELECT 1 FROM build_line l WHERE l.part_id = p.id OR l.bom_part_id = p.id)
+       OR EXISTS (SELECT 1 FROM build_req q WHERE q.part_id = p.id OR q.use_part_id = p.id)
        OR EXISTS (SELECT 1 FROM shopping_item s WHERE s.part_id = p.id)
        OR EXISTS (SELECT 1 FROM part m WHERE m.merged_into_id = p.id)
        OR p.merged_into_id IS NOT NULL) AS used
